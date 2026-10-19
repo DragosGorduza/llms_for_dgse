@@ -8,13 +8,13 @@ Background: [literature review](claude_lit_review_LLMs_for_DGSE.md), [planning n
 
 ```mermaid
 flowchart LR
-    P[prompts/ template + narrative] --> L[llms: client, cache, parser]
-    L --> S[shocks: mapping, profile, intensity, mode]
-    S --> E[experiments: runner]
-    M[models: H&#40;U,Z&#41;=0] --> V[solvers]
+    P["prompts/ template + narrative"] --> L["llms: client, cache, parser"]
+    L --> S["shocks: mapping, profile, intensity, mode"]
+    S --> E["experiments: runner"]
+    M["models: equations H(U,Z)=0"] --> V["solvers"]
     E --> V
     V --> E
-    E --> R[runs/: files] --> G[reporting: report.md]
+    E --> R["runs/: files"] --> G["reporting: report.md"]
 ```
 
 ## Install and run (you run these)
@@ -52,14 +52,14 @@ You only edit YAML files in `configs/` and templates in `prompts/`. Files refer 
 
 ```mermaid
 flowchart TD
-    X[configs/experiments/NAME.yaml] -->|models, llms, scenario shocks by name| L[experiments/loader.py]
-    L --> M[configs/models/NAME.yaml]
-    L --> A[configs/llms/NAME.yaml]
-    L --> S[configs/shocks/NAME.yaml]
-    S -->|llm.template| P[prompts/NAME.j2]
-    S -->|llm.mapping| F[shocks/mapping.py]
-    S -->|model + variable| V[models/NAME.py and NAME.md]
-    L --> R[experiments/runner.py] --> O[runs/EXPERIMENT/RUN/]
+    X["configs/experiments/NAME.yaml"] -->|"models, llms, scenario shocks by name"| L["experiments/loader.py"]
+    L --> M["configs/models/NAME.yaml"]
+    L --> A["configs/llms/NAME.yaml"]
+    L --> S["configs/shocks/NAME.yaml"]
+    S -->|"llm.template"| P["prompts/NAME.j2"]
+    S -->|"llm.mapping"| F["shocks/mapping.py"]
+    S -->|"model + variable"| V["models/NAME.py and NAME.md"]
+    L --> R["experiments/runner.py"] --> O["runs/EXPERIMENT/RUN/"]
 ```
 
 The shock config is the one place where a prompt is wired to a model variable. Example, `configs/shocks/ks_pandemic_d.yaml`:
