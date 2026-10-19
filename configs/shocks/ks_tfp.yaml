@@ -1,0 +1,7 @@
+id: ks_tfp
+model: krusell_smith
+variable: Z
+mode: additive
+profile: {kind: geometric_decay, start: 0, rho: 0.8}
+intensity: 0.01
+source: manual

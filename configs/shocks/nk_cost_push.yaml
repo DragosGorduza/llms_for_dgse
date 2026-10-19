@@ -1,0 +1,7 @@
+id: nk_cost_push
+model: nk3
+variable: u
+mode: additive
+profile: {kind: multi_period, start: 0, duration: 4}
+intensity: 0.002
+source: manual

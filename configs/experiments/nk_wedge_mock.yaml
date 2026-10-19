@@ -1,0 +1,11 @@
+id: nk_wedge_mock
+description: LLM-generated inflation-expectations wedge in the NK model after an energy price narrative (mock LLM).
+T: 40
+models: [nk3]
+llms: [mock_expectations]
+scenarios:
+  - id: energy_wedge
+    shocks: [nk_wedge_energy]
+sweep:
+  intensities: [1.0, 2.0]
+tracked: [wedge_pi, pi, x, i, rr]

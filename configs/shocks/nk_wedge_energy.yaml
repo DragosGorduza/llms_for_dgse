@@ -1,0 +1,19 @@
+id: nk_wedge_energy
+model: nk3
+variable: wedge_pi
+mode: additive
+profile: {kind: narrative_timeline}
+intensity: 1.0
+source: llm
+llm:
+  template: inflation_expectations.j2
+  keys: [inflation_expectation_change_pp]
+  # Reject answers outside a plausible range (percentage points of expected inflation).
+  answer_bounds: {inflation_expectation_change_pp: [-50, 50]}
+  # pp per year -> decimal per quarter: 2 pp gives 0.005.
+  mapping: linear
+  mapping_params: {slope: 0.0025}
+  tail_decay: 1.0
+  events:
+    - {t: 0, text: "Energy prices have jumped 30% overnight."}
+    - {t: 8, text: "Energy prices have fallen back to where they were."}

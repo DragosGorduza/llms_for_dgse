@@ -1,0 +1,7 @@
+id: rbc_tfp
+model: rbc
+variable: Z
+mode: additive
+profile: {kind: geometric_decay, start: 0, rho: 0.9}
+intensity: 0.01
+source: manual

@@ -1,0 +1,4 @@
+name: nk3
+params: {}
+solver: numpy_newton
+solver_options: {}

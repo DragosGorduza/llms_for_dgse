@@ -1,0 +1,25 @@
+id: ks_pandemic_d
+model: krusell_smith
+variable: d
+mode: additive
+# Narrative timeline as in the notebook: the LLM answers once per distinct narrative; the answer is held until the next event.
+profile: {kind: narrative_timeline}
+intensity: 1.0
+source: llm
+llm:
+  template: household_consumption.j2
+  keys: [social_change_pct]
+  # Reject answers outside a plausible range (percent change in social consumption).
+  answer_bounds: {social_change_pct: [-100, 100]}
+  # d = -0.001 * percent change in social consumption, so -40% gives d = +0.04 (households cut consumption).
+  mapping: linear
+  mapping_params: {slope: -0.001}
+  # After the last event the effect fades by 10% per period.
+  tail_decay: 0.9
+  events:
+    - {t: 2, text: "You are hearing rumours that a pandemic is coming."}
+    - {t: 6, text: "A pandemic has begun."}
+    - {t: 10, text: "The pandemic is in full swing."}
+    - {t: 14, text: "A vaccine has been developed."}
+    - {t: 18, text: "The pandemic is over."}
+    - {t: 32, text: "The pandemic ended a long time ago."}

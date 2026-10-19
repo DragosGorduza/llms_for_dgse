@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+.ipynb_checkpoints/
+
+# secrets: only the README and the example template are tracked
+secrets/*
+!secrets/README.md
+!secrets/secrets.example.env
+.env
+
+# generated outputs
+runs/*
+!runs/README.md
+.llm_cache/

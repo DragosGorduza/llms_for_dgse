@@ -1,0 +1,41 @@
+# Single source of truth for plot colours. One colour per macro model, used by every figure and report.
+# The palette is colour-blind safe (Okabe-Ito). tests/reporting/test_style.py fails if a registered model is missing here.
+
+model_colors:
+  rbc: "#0072B2"             # blue
+  nk3: "#D55E00"             # vermillion
+  krusell_smith: "#009E73"   # bluish green
+
+# Used, in a stable order determined by the model name, for any model not listed above.
+fallback_palette: ["#CC79A7", "#E69F00", "#56B4E9", "#F0E442", "#000000"]
+
+# Runs of the same model (different scenario, intensity, mode, repeat) share the model colour and differ by line style
+# AND by shade (alpha): the first run is fully opaque, later ones fainter. Both cycle if there are more runs.
+run_linestyles: ["-", "--", ":", "-."]
+run_alphas: [1.0, 0.75, 0.55, 0.4]
+
+# Look of each solved economy ("arm") in the model-path and impulse-response figures. Every arm, including the
+# base-model, uses the model colour; arms differ by line style and by shade (alpha). Line width is the same for all,
+# because thick versus thin is hard to tell apart.
+arms:
+  baseline: {linestyle: "--", alpha: 0.45, linewidth: 1.8}   # base-model
+  classic:  {linestyle: "-.", alpha: 0.70, linewidth: 1.8}   # base-model + classic shock
+  llm:      {linestyle: ":",  alpha: 0.85, linewidth: 1.8}   # base-model + LLM shock
+  shocked:  {linestyle: "-",  alpha: 1.00, linewidth: 1.8}   # everything applied
+
+neutral_color: "#7F7F7F"     # zero reference lines in impulse-response figures; never a model colour
+
+# Font sizes (points) used by every figure.
+fonts:
+  suptitle: 15     # title of the whole figure
+  title: 11        # title of each panel (variable name)
+  axis_label: 10    # axis labels
+  tick: 9          # tick labels
+  legend: 9        # legend text
+
+# Figure size. Every figure is a grid of panels (one per variable); total size = panel size x number of columns/rows.
+figure:
+  panel_width: 6.0      # inches per panel
+  panel_height: 5     # inches per panel
+  max_columns: 3        # panels per row before wrapping
+  dpi: 130              # resolution of the saved png

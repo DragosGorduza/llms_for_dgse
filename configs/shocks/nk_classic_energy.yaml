@@ -1,0 +1,6 @@
+id: nk_classic_energy
+model: nk3
+# A ready-made shock defined by the model (see nk3.md, classic shocks). intensity multiplies its size.
+source: classic
+classic: cost_push_energy
+intensity: 1.0

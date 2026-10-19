@@ -1,0 +1,5 @@
+name: krusell_smith
+# Defaults use a small grid (nE=7, nA=100) so runs are fast; add `nA: 500` to match the notebook.
+params: {}
+solver: numpy_newton
+solver_options: {}

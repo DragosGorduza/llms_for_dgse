@@ -1,0 +1,9 @@
+id: nk_classic_vs_llm
+description: Energy price shock in the NK model, as a classic cost-push shock and as an LLM-generated expectations wedge, alone and together (mock LLM). Plots base-model, + classic, + LLM and + both.
+T: 40
+models: [nk3]
+llms: [mock_expectations]
+scenarios:
+  - id: energy
+    shocks: [nk_classic_energy, nk_wedge_energy]
+tracked: [pi, x, i, rr, u, wedge_pi]

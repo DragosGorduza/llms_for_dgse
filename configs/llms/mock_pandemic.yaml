@@ -1,0 +1,21 @@
+name: mock_pandemic
+provider: mock
+model_id: mock
+temperature: 0.0
+cache: false
+options:
+  # Patterns match the narrative text; the answers mimic a household cutting social consumption.
+  rules:
+    - pattern: rumours
+      response: {social_change_pct: -5, remote_change_pct: 2}
+    - pattern: has begun
+      response: {social_change_pct: -30, remote_change_pct: 10}
+    - pattern: full swing
+      response: {social_change_pct: -40, remote_change_pct: 15}
+    - pattern: vaccine
+      response: {social_change_pct: -20, remote_change_pct: 8}
+    - pattern: is over
+      response: {social_change_pct: -5, remote_change_pct: 3}
+    - pattern: long time ago
+      response: {social_change_pct: -1, remote_change_pct: 1}
+  default_response: {social_change_pct: 0, remote_change_pct: 0}

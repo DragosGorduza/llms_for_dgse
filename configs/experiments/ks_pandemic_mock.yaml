@@ -1,0 +1,13 @@
+id: ks_pandemic_mock
+description: Notebook scenario with a mock LLM. Pandemic narratives drive the taste shifter d in Krusell-Smith; intensity scales the LLM answer.
+T: 60
+models: [krusell_smith]
+llms: [mock_pandemic]
+scenarios:
+  - id: pandemic_d
+    shocks: [ks_pandemic_d]
+sweep:
+  intensities: [0.5, 1.0, 2.0]
+  modes: [additive]
+  repeats: 1
+tracked: [d, Y, C, K, r]

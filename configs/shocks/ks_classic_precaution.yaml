@@ -1,0 +1,6 @@
+id: ks_classic_precaution
+model: krusell_smith
+# The classic counterpart of the LLM pandemic shock: same input d, fixed size and timing (see krusell_smith.md).
+source: classic
+classic: precautionary_saving
+intensity: 1.0

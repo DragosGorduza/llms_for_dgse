@@ -1,0 +1,11 @@
+id: smoke_manual
+description: Manual shocks, no LLM. TFP in the RBC and Krusell-Smith models, cost-push in the NK model.
+T: 40
+models: [rbc, nk3, krusell_smith]
+scenarios:
+  # Each shock names its model, so cells without a matching shock (nk3 here) are skipped.
+  - id: tfp
+    shocks: [rbc_tfp, ks_tfp]
+  - id: cost_push
+    shocks: [nk_cost_push]
+tracked: [Y, C, K, r, pi, x, i]

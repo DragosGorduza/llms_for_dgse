@@ -1,0 +1,12 @@
+name: mock_expectations
+provider: mock
+model_id: mock
+temperature: 0.0
+cache: false
+options:
+  rules:
+    - pattern: jumped
+      response: {inflation_expectation_change_pp: 2.0}
+    - pattern: fallen back
+      response: {inflation_expectation_change_pp: 0.0}
+  default_response: {inflation_expectation_change_pp: 0.0}

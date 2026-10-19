@@ -1,0 +1,7 @@
+name: openai_gpt4o_mini
+provider: openai
+model_id: gpt-4o-mini
+temperature: 0.0
+# Name of the secret, not the key. Put the key in secrets/secrets.env.
+api_key_env: OPENAI_API_KEY
+cache: true

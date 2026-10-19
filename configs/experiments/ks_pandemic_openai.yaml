@@ -1,0 +1,11 @@
+id: ks_pandemic_openai
+description: Same as ks_pandemic_mock but with a real model. Needs OPENAI_API_KEY in secrets/secrets.env and `pip install openai`.
+T: 60
+models: [krusell_smith]
+llms: [openai_gpt4o_mini]
+scenarios:
+  - id: pandemic_d
+    shocks: [ks_pandemic_d]
+sweep:
+  intensities: [1.0]
+tracked: [d, Y, C, K, r]

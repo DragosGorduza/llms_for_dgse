@@ -1,0 +1,4 @@
+name: rbc
+params: {}
+solver: numpy_newton
+solver_options: {}
