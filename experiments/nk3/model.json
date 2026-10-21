@@ -1,0 +1,22 @@
+{
+  "name": "nk3",
+  "title": "Three-equation New Keynesian (NK) model with an inflation-expectations wedge",
+  "description": "The small workhorse model central banks use to think about inflation and the business cycle. Demand: households spend more when the real interest rate is low (the IS curve). Supply: firms raise prices faster when demand is strong and when they expect high inflation (the Phillips curve). Policy: the central bank raises the interest rate when inflation or output are high (the Taylor rule). Every variable is a deviation from a steady state with inflation on target, so 0 means normal. All values are decimals per period, 0.01 = 1 percentage point.",
+  "parameters": {
+    "beta": {"default": 0.99, "description": "Discount factor: how much firms and households value next period relative to today."},
+    "sigma": {"default": 1.0, "description": "Inverse intertemporal elasticity of substitution; higher means demand reacts less to the interest rate."},
+    "kappa": {"default": 0.1, "description": "Slope of the Phillips curve: how strongly inflation rises when output is above normal."},
+    "phi_pi": {"default": 1.5, "description": "Central bank reaction to inflation, in points of interest rate per point of inflation; must exceed 1 for stability."},
+    "phi_x": {"default": 0.125, "description": "Central bank reaction to the output gap."}
+  },
+  "variables": {
+    "r_n": {"role": "exogenous", "shockable": true, "units": "decimal per period, 0 in the steady state", "description": "Natural rate of interest or demand shifter: summarises confidence, fiscal policy, credit conditions and saving behaviour that move spending independently of the interest rate."},
+    "u": {"role": "exogenous", "shockable": true, "units": "decimal per period, 0 in the steady state", "description": "Cost-push shock: a supply-side force that raises firms' prices for given demand, such as an energy price spike or supply-chain disruption."},
+    "eps_i": {"role": "exogenous", "shockable": true, "units": "decimal per period, 0 in the steady state", "description": "Monetary policy shock: a surprise deviation of the policy rate from what the central bank's rule implies."},
+    "wedge_pi": {"role": "exogenous", "shockable": true, "units": "decimal per period, 0 in the steady state", "description": "Inflation-expectations wedge: how much expected inflation exceeds the model-consistent value; 0 means rational expectations."},
+    "x": {"role": "unknown", "shockable": false, "units": "decimal, 0 in the steady state", "description": "Output gap: how far output is above or below its normal level; found by the solver."},
+    "pi": {"role": "unknown", "shockable": false, "units": "decimal per period, 0 in the steady state", "description": "Inflation as a deviation from the central bank's target; found by the solver."},
+    "i": {"role": "unknown", "shockable": false, "units": "decimal per period, 0 in the steady state", "description": "Nominal policy interest rate as a deviation from its steady-state level; found by the solver."},
+    "rr": {"role": "derived", "shockable": false, "units": "decimal per period, 0 in the steady state", "description": "Ex-post real interest rate: the nominal rate minus next period's inflation."}
+  }
+}

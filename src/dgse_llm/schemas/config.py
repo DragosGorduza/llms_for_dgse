@@ -7,7 +7,9 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Mode = Literal["additive", "replace"]
-ProfileKind = Literal["one_time", "multi_period", "geometric_decay", "from_series", "narrative_timeline"]
+ProfileKind = Literal[
+    "one_time", "multi_period", "geometric_decay", "from_series", "narrative_timeline", "at_periods"
+]
 
 
 class _Base(BaseModel):
@@ -22,19 +24,25 @@ class ModelConfig(_Base):
     solver_options: dict[str, Any] = Field(default_factory=dict)
 
 
-class LLMConfig(_Base):
-    name: str
+class LLMSetting(_Base):
+    """One LLM as written in an experiment's `llms:` mapping (the key is its name)."""
+
     provider: str
     model_id: str = "mock"
+    # null: the model takes no temperature (for example reasoning models); every call is then a fresh draw.
     temperature: float | None = 0.0
     seed: int | None = None
     max_tokens: int | None = None
-    # Name of the environment variable / secrets.env entry holding the key; never the key itself.
+    # Name of the environment variable / secrets.env entry holding the key; never the key itself. null: no key needed.
     api_key_env: str | None = None
     # Caching only applies at temperature 0; any other value (including None) always calls the provider.
     cache: bool = True
     cache_dir: str | None = None
     options: dict[str, Any] = Field(default_factory=dict)
+
+
+class LLMConfig(LLMSetting):
+    name: str
 
 
 class TimeProfile(_Base):
@@ -43,11 +51,28 @@ class TimeProfile(_Base):
     duration: int = Field(1, ge=1)
     rho: float = 0.9
     series: list[float] | None = None
+    # kind 'at_periods': the shock is active exactly in these periods (one entry = a single-period shock).
+    periods: list[int] = Field(default_factory=list)
 
 
 class NarrativeEvent(_Base):
     t: int = Field(ge=0)
     text: str
+
+
+class Occurrence(_Base):
+    """An event that happens in one or more periods: one LLM call for `text`, its value applied in each period."""
+
+    periods: list[int] = Field(min_length=1)
+    text: str
+    # Name of the shock (experiments/shocks/<name>.yaml) the text came from; empty for hand-written events.
+    name: str = ""
+
+    @model_validator(mode="after")
+    def _check(self) -> "Occurrence":
+        if any(p < 0 for p in self.periods):
+            raise ValueError(f"periods must be >= 0, got {self.periods}")
+        return self
 
 
 class LLMSource(_Base):
@@ -57,6 +82,13 @@ class LLMSource(_Base):
     mapping: str = "identity"
     mapping_params: dict[str, float] = Field(default_factory=dict)
     template_vars: dict[str, Any] = Field(default_factory=dict)
+    # Narrative text used when there are no `events` (one LLM call, applied in every active period).
+    narrative: str = ""
+    # Broader context shown with every event (template slot `narrative`); events fill the slot `event`.
+    # With `occurrences`, each event is one call and its answer is applied in the listed periods only (no holding).
+    occurrences: list[Occurrence] = Field(default_factory=list)
+    # True: the mapped answer is a fraction of the input's baseline level (answer / 100 * baseline; use mapping 'pct').
+    scale_by_baseline: bool = False
     # Plausibility range (low, high) of the RAW answer per key, in the units the prompt asks for. An answer outside it
     # is rejected as invalid instead of being fed to the model.
     answer_bounds: dict[str, tuple[float, float]] = Field(default_factory=dict)
@@ -123,14 +155,22 @@ class ShockSpec(_Base):
             raise ValueError("profile 'narrative_timeline' requires llm.events")
         if self.llm and self.llm.events and not narrative:
             raise ValueError("llm.events requires profile kind 'narrative_timeline'")
+        if self.llm and self.llm.occurrences and self.llm.events:
+            raise ValueError("llm.occurrences and llm.events cannot be combined")
         if profile.kind == "from_series" and not profile.series:
             raise ValueError("profile 'from_series' requires a series")
+        if profile.kind == "at_periods" and not profile.periods:
+            raise ValueError("profile 'at_periods' requires periods")
+        if self.llm and self.llm.scale_by_baseline and self.mode != "additive":
+            raise ValueError("scale_by_baseline needs mode 'additive'")
         return self
 
 
 class Scenario(_Base):
     id: str
     description: str = ""
+    # Experiment axes of this scenario (prompt, persona, scenario, model_info), copied to the run manifest.
+    meta: dict[str, Any] = Field(default_factory=dict)
     shocks: list[ShockSpec] = Field(min_length=1)
 
 
@@ -142,6 +182,8 @@ class Sweep(_Base):
 
 
 class ExperimentConfig(_Base):
+    """The expanded plan the runner executes; users write an `ExperimentSpec`, which compiles into this."""
+
     id: str
     description: str = ""
     T: int = Field(100, gt=1)
@@ -151,3 +193,107 @@ class ExperimentConfig(_Base):
     sweep: Sweep = Field(default_factory=Sweep)
     tracked: list[str] | None = None
     out_dir: str | None = None
+
+
+class ScenarioDef(_Base):
+    """One named scenario of an experiment: an optional broader narrative plus one or more named shocks."""
+
+    description: str = ""
+    # Broader context: a name from experiments/narratives.yaml or literal text. Empty: no context line in the prompt.
+    narrative: str = ""
+    # In the YAML: {period: shock name or list of names}, e.g. {5: shock_a, 12: shock_b}; "8-10" keys are ranges.
+    # The loader turns it into `events` and keeps here the list of shock names used.
+    shocks: list[str] = Field(min_length=1)
+    events: list[Occurrence] = Field(default_factory=list)
+
+
+class ExperimentSpec(_Base):
+    """What a user writes in experiments/<model>/<name>.yaml (names already resolved by the loader).
+
+    Cells = llms x prompts x personas x scenarios x include_model_info (x repeats when temperature != 0).
+    """
+
+    id: str
+    description: str = ""
+    T: int = Field(120, gt=1)
+    # The macro model, with optional parameter overrides and solver settings; a bare name works too.
+    model: ModelConfig
+    # name -> settings. Any number of entries; the same provider can appear several times (for example at
+    # different temperatures), and every entry is run on every cell.
+    llms: dict[str, LLMSetting] = Field(min_length=1)
+    # Prompt kinds: file stems in prompts/<model>/ (each shocks one input, see prompts/<model>/prompts.yaml).
+    prompts: list[str] = Field(min_length=1)
+    # id -> text. Who answers.
+    personas: dict[str, str] = Field(min_length=1)
+    # id -> narrative (optional) and shocks; each shock is a timeline {period: event text}.
+    scenarios: dict[str, ScenarioDef] = Field(min_length=1)
+    # Run every cell with and/or without the model's name, description and parameters in the prompt.
+    include_model_info: list[bool] = Field(default_factory=lambda: [False, True], min_length=1)
+    # Draws per cell for LLMs with temperature != 0; temperature 0 is deterministic, so one draw.
+    repeats: int = Field(5, ge=1)
+    # Variables saved and reported; null means all.
+    tracked: list[str] | None = None
+    out_dir: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _bare_model_name(cls, data):
+        if isinstance(data, dict) and isinstance(data.get("model"), str):
+            data = {**data, "model": {"name": data["model"]}}
+        return data
+
+    @model_validator(mode="after")
+    def _check(self) -> "ExperimentSpec":
+        for name, scenario in self.scenarios.items():
+            if not scenario.events:
+                raise ValueError(f"scenario '{name}' has no events")
+            late = [p for occ in scenario.events for p in occ.periods if p >= self.T]
+            if late:
+                raise ValueError(f"scenario '{name}' has periods {sorted(set(late))} outside 0..{self.T - 1}")
+        if len(set(self.include_model_info)) != len(self.include_model_info):
+            raise ValueError("include_model_info lists a value twice")
+        return self
+
+
+class PromptDef(_Base):
+    """One entry of prompts/<model>/prompts.yaml: which input a prompt kind shocks and how its answer is converted.
+
+    Every prompt asks for the same thing, a relative percentage change (JSON key `change_pct`).
+    """
+
+    variable: str
+    # Plausible range of the answer in percent; anything outside is rejected as invalid.
+    answer_bounds: tuple[float, float]
+    # Input units per +1% answered. None: the answer is a relative change of the input's own baseline level.
+    per_pct: float | None = None
+    description: str = ""
+
+    @model_validator(mode="after")
+    def _check(self) -> "PromptDef":
+        if self.answer_bounds[0] >= self.answer_bounds[1]:
+            raise ValueError(f"answer_bounds must have low < high, got {self.answer_bounds}")
+        if self.per_pct == 0:
+            raise ValueError("per_pct must not be 0")
+        return self
+
+
+class ParamInfo(_Base):
+    default: float
+    description: str = Field(min_length=10)
+
+
+class VarInfo(_Base):
+    role: Literal["exogenous", "unknown", "derived"]
+    shockable: bool
+    units: str = Field(min_length=3)
+    description: str = Field(min_length=20)
+
+
+class ModelRegister(_Base):
+    """experiments/<model>/model.json: the model's description, every parameter and every variable."""
+
+    name: str
+    title: str
+    description: str = Field(min_length=40)
+    parameters: dict[str, ParamInfo]
+    variables: dict[str, VarInfo]

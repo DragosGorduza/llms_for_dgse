@@ -53,4 +53,13 @@ def test_narrative_timeline_has_no_fixed_shape():
 
 
 def test_every_schema_kind_is_registered():
-    assert {"one_time", "multi_period", "geometric_decay", "from_series"} <= set(PROFILE_REGISTRY.names())
+    assert {"one_time", "multi_period", "geometric_decay", "from_series", "at_periods"} <= set(PROFILE_REGISTRY.names())
+
+
+def test_at_periods_single_and_several():
+    assert np.array_equal(shape(kind="at_periods", periods=[4]), [0, 0, 0, 0, 1, 0, 0, 0, 0, 0])
+    assert np.array_equal(shape(kind="at_periods", periods=[1, 5, 8]), [0, 1, 0, 0, 0, 1, 0, 0, 1, 0])
+
+
+def test_at_periods_ignores_periods_beyond_the_horizon():
+    assert shape(kind="at_periods", periods=[2, 50]).sum() == 1

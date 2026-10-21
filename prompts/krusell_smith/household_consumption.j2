@@ -1,0 +1,10 @@
+{{ persona }}
+{% if narrative %}{{ narrative }}
+{% endif %}{{ event }}
+{% if model_info %}
+
+{{ model_info }}
+{% endif %}
+
+Estimate the percentage change in household consumption caused by what you have just read: how much more or less households want to spend on goods and services this quarter than they otherwise would. Include both essential and discretionary spending, and hold prices and incomes fixed. A household that is short of money cannot spend what it does not have, so reflect this in the aggregate.
+{% include "_answer_format.j2" %}

@@ -1,0 +1,8 @@
+{{ persona | default("Consider a household living in the United Kingdom.") }}
+{{ narrative }}
+Relative to an otherwise identical situation without this event, how would the household change its desired total consumption expenditure this quarter?
+Hold prices, current income, wealth, borrowing access, expected future income and interest rates fixed. Estimate only the direct change in willingness to consume caused by the event, not effects from lower income or the economy's subsequent response. Include both essential and discretionary consumption, not just social spending. Respect the household's available resources; do not assume it can freely reduce essential spending or finance extra spending.
+Use a percent change relative to the household's total consumption without the event. Negative means less consumption; positive means more. A value of -5 means a 5% reduction, not a change of -0.05. Use 0 if the event has no direct effect on willingness to consume.
+This is a behavioural estimate, not a prescribed change in aggregate model consumption. Do not report a marginal-utility wedge.
+Return only one JSON object on its own line, with a plain finite number and no percent sign. Replace the example value with your estimate:
+{"consumption_change_pct": 0.0}

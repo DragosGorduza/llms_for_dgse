@@ -15,7 +15,7 @@ llm:
   mapping: linear
   mapping_params: {slope: -0.001}
   # After the last event the effect fades by 10% per period.
-  tail_decay: 0.9
+  tail_decay: 0
   events:
     - {t: 2, text: "You are hearing rumours that a pandemic is coming."}
     - {t: 6, text: "A pandemic has begun."}

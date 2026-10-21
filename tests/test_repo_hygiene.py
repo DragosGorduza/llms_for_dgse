@@ -31,10 +31,18 @@ def test_source_folders_have_readmes(folder):
 
 @pytest.mark.parametrize(
     "folder",
-    ["configs", "configs/models", "configs/llms", "configs/shocks", "configs/experiments", "prompts", "secrets", "runs", "tests"],
+    ["configs", "experiments", "experiments/shocks", "prompts", "secrets", "runs", "tests"],
 )
 def test_top_level_folders_have_readmes(folder):
     assert (ROOT / folder / "README.md").exists()
+
+
+def test_every_model_folder_in_experiments_has_a_readme_and_prompts_folder():
+    from dgse_llm.models import MODEL_REGISTRY
+
+    for name in MODEL_REGISTRY.names():
+        assert (ROOT / "experiments" / name / "README.md").exists(), name
+        assert (ROOT / "prompts" / name / "prompts.yaml").exists(), name
 
 
 def test_root_readme_exists():
@@ -75,6 +83,7 @@ def test_example_secrets_file_has_no_values():
 
 
 def test_configs_never_contain_inline_keys():
-    for path in (ROOT / "configs").rglob("*.yaml"):
-        text = path.read_text(encoding="utf-8")
-        assert "api_key:" not in text, f"{path.name}: use api_key_env, never a key"
+    for folder in ("configs", "experiments"):
+        for path in (ROOT / folder).rglob("*.yaml"):
+            text = path.read_text(encoding="utf-8")
+            assert "api_key:" not in text, f"{path.name}: use api_key_env, never a key"

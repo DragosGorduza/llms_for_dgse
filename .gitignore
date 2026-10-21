@@ -15,3 +15,4 @@ secrets/*
 runs/*
 !runs/README.md
 .llm_cache/
+krusell_smith (1).ipynb

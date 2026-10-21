@@ -1,0 +1,7 @@
+{{ persona | default("You are an economist assessing aggregate production in the United Kingdom.") }}
+{{ narrative }}
+Estimate the direct percent change in aggregate total factor productivity this quarter caused by this event, relative to an otherwise identical economy without it.
+In the Krusell-Smith model, output is Y = Z * K^alpha with labour fixed at 1. Z is total factor productivity: output obtainable from unchanged quantities of capital and effective labour. Hold those quantities fixed. Exclude demand changes, changes in household willingness to consume, capital accumulation, and changes explained solely by hours worked or employment. Include only an event's effect on production efficiency at fixed inputs; use 0 if no such channel is supported by the narrative. Do not infer TFP directly from a change in GDP.
+Report a percent change in the level of Z, not a percentage-point change or an annual growth rate. Positive means improved productivity; negative means reduced productivity. A value of -2 means Z is 2% below its no-event level, so Z_event = Z_baseline * 0.98. The change must be greater than -100%.
+Return only one JSON object on its own line, with a plain finite number and no percent sign. Replace the example value with your estimate:
+{"tfp_change_pct": 0.0}

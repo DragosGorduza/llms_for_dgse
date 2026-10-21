@@ -2,6 +2,11 @@
 
 Builds the path that modifies one exogenous input of a macro model, then injects it.
 
+Users do not write `ShockSpec`s any more. An experiment file in `experiments/<model>/` is compiled by
+`experiments/loader.py` into one single-LLM-shock `ShockSpec` per prompt x persona x scenario x model-info flag. This
+package is the engine behind that. Manual, classic and narrative-timeline shocks remain available to code and tests,
+not to experiment YAML.
+
 ## Flow
 
 `ShockSpec` + model (+ LLM) -> `build_shock_path` -> `ShockPath` -> `apply_shocks` -> modified exogenous paths.
@@ -10,8 +15,9 @@ Builds the path that modifies one exogenous input of a macro model, then injects
 2. **Value**: `source: manual` uses `intensity` itself. `source: classic` uses a ready-made shock defined by the model
    (see below); `intensity` multiplies its size. `source: llm` renders the prompt template, calls the LLM,
    parses `llm.keys`, takes `llm.key` and converts it with the mapping function; the result is multiplied by `intensity`.
-3. **Time profile** (`profiles.py`, unit-height shape): `one_time` (impulse at `start`, the model's own dynamics
-   take over afterwards), `multi_period` (`duration` periods), `geometric_decay` (`rho`), `from_series`.
+3. **Time profile** (`profiles.py`, unit-height shape): `at_periods` (1 in each listed period; one entry is a
+   single-period shock; used by `build_shock_path` for a single call), `one_time` (impulse at `start`, the model's own
+   dynamics take over afterwards), `multi_period` (`duration` periods), `geometric_decay` (`rho`), `from_series`.
    `narrative_timeline` is different: `llm.events` is a list of `{t, text}`; in each period the latest event's
    narrative is sent to the LLM (one call per distinct narrative) and its value is held until the next event.
    After the last event the value is multiplied by `tail_decay ** (t - t_last)`. Before the first event the shock is 0.
@@ -24,27 +30,29 @@ Builds the path that modifies one exogenous input of a macro model, then injects
 
 ## Wiring: from prompt to model variable
 
-One shock config wires one LLM answer to one model input. In `configs/shocks/ks_pandemic_d.yaml`:
+For an experiment cell the compiled LLM shock is wired like this (`compile_spec` in `experiments/loader.py`, using
+`prompts/<model>/prompts.yaml` and `experiments/<model>/model.json`):
 
-1. `llm.template` names the file in `prompts/`. The code renders it with `narrative` (the event text), `t` (the
-   period) and every entry of `llm.template_vars`.
-2. The template asks for JSON with keys; `llm.keys` lists them. `llm.key` (default: the first) is the one that drives
-   the shock. Other keys are validated but not used.
-3. `llm.answer_bounds` rejects implausible raw answers (pydantic).
-4. `llm.mapping` and `llm.mapping_params` convert the raw answer into the units of the model input. For example
-   `linear` with `slope: -0.001` gives `d = -0.001 * social_change_pct`.
-5. The value is multiplied by `intensity` and shaped by `profile` (and `llm.events`, `llm.tail_decay`).
-6. The path is injected into the model input named by `variable`, in the given `mode`.
+1. `llm.template` is `<model>/<prompt>.j2`. It is rendered with `persona`, `model_info` (empty when the flag is off),
+   `narrative` (the scenario's optional context, `llm.narrative`) and `event` (the event text of the call).
+2. `llm.occurrences` lists the scenario's events, each with its periods. Each distinct event text is one LLM call
+   whose answer is applied in that event's periods only (no holding between events; events in the same period add up).
+3. The answer key is always `change_pct`, a relative percentage change.
+4. `llm.answer_bounds` rejects implausible raw answers (pydantic), from `prompts.yaml`.
+5. Conversion to model units: with `per_pct` in `prompts.yaml`, `mapping: linear` with that slope (inputs whose
+   baseline is 0); without it, `mapping: pct` and `scale_by_baseline: true`, so the value is
+   `change_pct / 100 x the input's baseline level` (checked in `build_shock_path`; a zero baseline raises `ShockError`).
+6. The path is always injected `additive`, into the model input named by `variable`.
 
-The link between an answer key and a variable is therefore `variable:` plus the single driving key; there is no
-per-key variable setting. To drive several variables, use several shocks (each makes its own LLM call). Which LLM is
-used is chosen by the experiment (`llms:`), not by the shock. The code is `_ask_llm` and `build_shock_path` in
-`builder.py`; the full picture is in the root [README](../../../README.md).
+The link between the answer and a variable is `variable:` plus the single driving key. To drive several variables, use
+several prompts (each makes its own LLM call). Which LLM is used is chosen by the experiment (`llms:`). The code is
+`_ask_llm` and `build_shock_path` in `builder.py`; the full picture is in the root [README](../../../README.md).
 
-## Classic shocks (no LLM)
+## Classic shocks (no LLM, code-level only)
 
 Each model lists ready-made shocks in `classic_shocks` (in its `.py`, described in its `.md`): a name, the input it
-hits, a size, and a timing (one-time, multi-period or decaying), for example `cost_push_energy` in `nk3`. Use one with
+hits, a size, and a timing (one-time, multi-period or decaying), for example `cost_push_energy` in `nk3`. A
+`ShockSpec` uses one with
 
 ```yaml
 id: nk_classic_energy
@@ -83,12 +91,14 @@ Parameters come from `llm.mapping_params`. Add your own in one function.
 
 ## Intensity
 
-`intensity` is a multiplier on the mapped value (manual shocks: the value in input units). Experiments can sweep it
-(`sweep.intensities`) without editing shock configs.
+`intensity` is a multiplier on the mapped value (manual shocks: the value in input units). It is not used by the
+experiment files, which always apply the LLM's answer at full size.
 
 ## Tests (`tests/shocks`)
 
-Shape of each profile, additive vs replace arithmetic, bounds error/clip, non-shockable variable rejected, classic
+Shape of each profile (including `at_periods`), additive vs replace arithmetic, bounds error/clip, non-shockable
+variable rejected, classic
 shocks (size, timing, intensity multiplier, override, unknown name), LLM
-shock with the mock provider (single call, narrative timeline, tail decay, one call per distinct narrative), parse
+shock with the mock provider (single call, narrative timeline, tail decay, one call per distinct narrative), relative
+(`scale_by_baseline`) and `per_pct` conversions, parse
 failures recorded and raised, provenance links to LLM call ids.

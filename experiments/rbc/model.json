@@ -1,0 +1,23 @@
+{
+  "name": "rbc",
+  "title": "Real business cycle (RBC) model with elastic labour",
+  "description": "One representative household owns the capital stock, rents it and its own labour to a firm, and chooses each period how much to consume, how much to save (invest in new capital) and how many hours to work. The firm turns capital and labour into output, which is split between consumption and investment. Only productivity and the household's patience move the economy; everything else responds to them. Everyone knows the future path of the inputs from period 0 (perfect foresight).",
+  "parameters": {
+    "alpha": {"default": 0.33, "description": "Capital share of income: how much of output is paid to capital rather than labour."},
+    "delta": {"default": 0.025, "description": "Depreciation rate: fraction of the capital stock that wears out each period."},
+    "beta": {"default": 0.99, "description": "Steady-state discount factor: the household's patience in the long run."},
+    "sigma": {"default": 1.0, "description": "Curvature of utility from consumption; higher means the household dislikes uneven consumption more."},
+    "phi": {"default": 1.0, "description": "Inverse Frisch elasticity of labour supply; higher means hours respond less to the wage."}
+  },
+  "variables": {
+    "Z": {"role": "exogenous", "shockable": true, "units": "index, equal to 1 in the steady state", "description": "Total factor productivity: how much output the economy produces from given capital and labour."},
+    "beta": {"role": "exogenous", "shockable": true, "units": "unitless, about 0.99 in the steady state", "description": "Discount factor: how much the household values next period relative to today; a taste for patience, not a price."},
+    "K": {"role": "unknown", "shockable": false, "units": "quantity (units of output), end of period", "description": "Capital stock owned at the end of the period, used by the firm in the next period; found by the solver."},
+    "L": {"role": "unknown", "shockable": false, "units": "quantity (hours), 1 in the steady state", "description": "Hours worked by the household, chosen by comparing the wage with the value of leisure; found by the solver."},
+    "Y": {"role": "derived", "shockable": false, "units": "quantity (units of output)", "description": "Output (GDP), which is also the total income of the economy."},
+    "C": {"role": "derived", "shockable": false, "units": "quantity (units of output)", "description": "Consumption: the part of output the household uses up in the period."},
+    "I": {"role": "derived", "shockable": false, "units": "quantity (units of output)", "description": "Investment: output used to build new capital in the period."},
+    "r": {"role": "derived", "shockable": false, "units": "rate per period, 0.01 = 1%", "description": "Net real return on capital, the reward for saving."},
+    "w": {"role": "derived", "shockable": false, "units": "output per hour", "description": "Real wage per hour of labour, equal to the marginal product of labour."}
+  }
+}

@@ -1,0 +1,26 @@
+# per_pct = change of the model input per +1% answered. Inputs are deviations with baseline 0, so a relative change
+# needs a reference level; each choice is a calibration to review.
+demand:
+  variable: r_n
+  # With sigma = 1 a change of d in r_n moves desired spending by about d, so a 1% change in spending is 0.01.
+  per_pct: 0.01
+  answer_bounds: [-20, 20]
+  description: Percentage change in aggregate demand at unchanged interest rates; moves the natural rate r_n.
+cost_push:
+  variable: u
+  # A 10% rise in production costs equals the classic energy shock of 0.002 per period.
+  per_pct: 0.0002
+  answer_bounds: [-100, 100]
+  description: Percentage change in firms' production costs; moves the cost-push term u.
+monetary_policy:
+  variable: eps_i
+  # Assumes a policy rate of about 1% per quarter, so a 1% change in the rate is 0.0001.
+  per_pct: 0.0001
+  answer_bounds: [-100, 100]
+  description: Percentage change in the policy rate relative to the rule; moves the policy shock eps_i.
+inflation_expectations:
+  variable: wedge_pi
+  # Assumes expected inflation of about 0.5% per quarter (2% a year); +100% is then +0.005.
+  per_pct: 0.00005
+  answer_bounds: [-200, 200]
+  description: Percentage change in expected inflation; moves the expectations wedge wedge_pi.

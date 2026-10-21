@@ -1,30 +1,55 @@
 # prompts/
 
-Jinja2 templates rendered by `dgse_llm.llms.PromptRenderer`. Referenced by name from a shock's `llm.template`.
+Jinja2 templates rendered by `dgse_llm.llms.PromptRenderer`. One folder per macro model, one `.j2` per prompt type.
 
-Variables available to every template: `narrative` (the current event text, empty if the shock has no events),
-`t` (period index, only for narrative timelines) and everything under the shock's `llm.template_vars`
-(for example `persona`). Undefined variables raise an error.
+```
+prompts/
+  _answer_format.j2        shared last paragraph: relative % change, JSON key `change_pct`
+  <model>/
+    prompts.yaml           prompt type -> model input it shocks, answer range, unit conversion
+    <type>.j2              e.g. tfp.j2, discount_factor.j2, household_consumption.j2
+```
 
-| Template | Asks for | Output keys |
-| --- | --- | --- |
-| `household_consumption.j2` | Change in social and remote consumption vs the pre-event level (from the KS notebook) | `social_change_pct`, `remote_change_pct` |
-| `inflation_expectations.j2` | Change in expected inflation caused by the narrative | `inflation_expectation_change_pp` |
+Every template has exactly four degrees of freedom, all filled by the experiment (`experiments/<model>/*.yaml`):
+`persona` (who answers), `narrative` (the scenario's optional broader context, empty if none), `event` (what happens in
+the period being asked about, from the scenario's shocks) and `model_info` (the model's name, description and
+parameters, rendered from `experiments/<model>/model.json`; empty when `include_model_info` is off, so templates wrap
+it in `{% if model_info %}`). Undefined variables raise an error.
 
-## How a template is connected
+| Model | Prompt types (input shocked) |
+| --- | --- |
+| `krusell_smith` | `tfp` (`Z`), `discount_factor` (`beta`), `household_consumption` (`d`) |
+| `rbc` | `tfp` (`Z`), `discount_factor` (`beta`) |
+| `nk3` | `demand` (`r_n`), `cost_push` (`u`), `monetary_policy` (`eps_i`), `inflation_expectations` (`wedge_pi`) |
 
-A template is used by a shock config (`configs/shocks/<name>.yaml`, field `llm.template`). The JSON keys the template asks
-for must equal `llm.keys` there (`tests/test_configs.py` checks this). The key named by `llm.key` is converted by
-`llm.mapping` into the units of the model input given by `variable`, so the prompt's units (percent, percentage points)
-and the mapping's slope must agree. See the wiring table in the root README and `src/dgse_llm/shocks/README.md`.
+## One unit everywhere
+
+Every prompt asks for a relative percentage change and the answer is always `{"change_pct": <number>}`: +5 is 5% higher
+than otherwise, -5 is 5% lower. Prompts never state the current level of the variable. `prompts.yaml` converts the
+answer into the model input:
+
+| Field | Meaning |
+| --- | --- |
+| `variable` | The shockable input that moves (checked against `experiments/<model>/model.json`). |
+| `answer_bounds` | Plausible range of the answer in percent; anything outside is rejected as invalid. |
+| `per_pct` | Input units per +1% answered, for inputs whose baseline is 0 (`d` and every `nk3` input). |
+| (no `per_pct`) | The answer is a relative change of the input's own baseline level: `Z` and `beta` move by `baseline x change_pct / 100`. |
+
+Each prompt's question sentence is unique (for example "Estimate the percentage change in total factor productivity"),
+because the mock LLM in `experiments/<model>/mock.yaml` answers by matching it.
+
+Changing `persona` to a wealthy household changes the LLM's estimate only. The Krusell-Smith model still applies one `d`
+path to every household; targeting a subgroup needs a household-model extension, not a different prompt.
 
 ## Rules
 
-- End the prompt by asking for one JSON object with the exact keys listed in the shock's `llm.keys`.
-- Ask for plain numbers in stated units; the answer is validated with pydantic (finite float per key, optional `llm.answer_bounds` range), so set `answer_bounds` in the shock config to the plausible range of those units.
-- State units (percent, percentage points) and sign convention in the prompt; the mapping function in the shock config converts them to model units.
-- Keep the instruction text and the persona constant across periods; only `narrative` should change, so differences in answers come from the narrative.
+- Start with `{{ persona }}`, then `{% if narrative %}{{ narrative }}\n{% endif %}{{ event }}`, then the optional
+  `model_info` block, then one question sentence, then `{% include "_answer_format.j2" %}` (copy an existing template).
+- Do not state the variable's current level or ask for percentage points; units stay relative percent.
+- Keep the question sentence free of the other prompts' wording.
+- A new prompt type: add `<type>.j2` and an entry in `prompts.yaml`; add its name to an experiment's `prompts:` list.
 
 ## Tests
 
-`tests/llms/test_prompts.py` renders every template here with sample variables, and fails on any template that needs an undeclared variable.
+`tests/llms/test_prompts.py` renders every template with persona, narrative, event and model info, checks that each asks for
+`change_pct`, and that every `prompts.yaml` entry has a template, a shockable variable and valid bounds.

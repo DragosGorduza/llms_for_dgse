@@ -1,0 +1,26 @@
+id: nk3_mock
+description: Offline NK check with a mock LLM that answers by prompt type; 4 prompts x 2 personas x 2 scenarios x 2 model-info settings.
+model: nk3
+llms:
+  mock:
+    provider: mock
+    temperature: 0.0
+    api_key_env: null
+    cache: false
+    options:
+      rules:
+        - {pattern: "percentage change in aggregate demand", response: {change_pct: -5.0}}
+        - {pattern: "percentage change in firms' production costs", response: {change_pct: 10.0}}
+        - {pattern: "percentage change in the central bank's policy interest rate", response: {change_pct: 20.0}}
+        - {pattern: "percentage change in the inflation that households", response: {change_pct: 50.0}}
+      default_response: {change_pct: 0.0}
+T: 30
+prompts: [demand, cost_push, monetary_policy, inflation_expectations]
+personas: [normal, economist]
+scenarios:
+  energy_spike_and_fall:
+    narrative: high_inflation
+    shocks: {4: energy_price_spike, 12: energy_price_fall}
+  banking_crisis: {shocks: {4: bank_collapse, 8: credit_crunch, 12: banking_rescue}}
+include_model_info: [false, true]
+tracked: [r_n, u, eps_i, wedge_pi, x, pi, i, rr]

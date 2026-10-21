@@ -1,0 +1,36 @@
+id: nk3_generic
+description: >
+  New Keynesian: every prompt x every persona x six scenarios, with and without the model description in the prompt,
+  on two LLM settings. Needs OPENAI_API_KEY in secrets/secrets.env. 4 prompts x 4 personas x 6 scenarios x 2
+  model-info settings = 192 cells per LLM, times the repeats of every LLM whose temperature is not 0.
+model: nk3
+
+llms:
+  gpt4o_mini_t0:
+    provider: openai
+    model_id: gpt-4o-mini
+    temperature: 0.0
+    api_key_env: OPENAI_API_KEY
+  gpt4o_mini_t1:
+    provider: openai
+    model_id: gpt-4o-mini
+    temperature: 1.0
+    api_key_env: OPENAI_API_KEY
+
+T: 120
+prompts: [demand, cost_push, monetary_policy, inflation_expectations]
+personas: all
+scenarios:
+  pandemic_one_time: {shocks: {4: pandemic_rumours}}
+  pandemic_wave: {shocks: {4: pandemic_rumours, 8: pandemic_peak, 12: pandemic_recedes}}
+  energy_spike_and_fall:
+    narrative: high_inflation
+    shocks: {4: energy_price_spike, 12: energy_price_fall}
+  sovereign_default_crisis:
+    narrative: fragile_finances
+    shocks: {4: sovereign_bond_selloff, 8: sovereign_default, 12: sovereign_restructuring}
+  banking_crisis: {shocks: {4: bank_collapse, 8: credit_crunch, 12: banking_rescue}}
+  technology_boom: {shocks: {4: technology_breakthrough, 8: technology_rollout, 12: technology_mature}}
+include_model_info: [false, true]
+repeats: 5
+tracked: [r_n, u, eps_i, wedge_pi, x, pi, i, rr]

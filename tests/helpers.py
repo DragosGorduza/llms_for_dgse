@@ -32,6 +32,24 @@ NK_RULES = [
     {"pattern": "fallen back", "response": {"inflation_expectation_change_pp": 0.0}},
 ]
 
+# Answers by prompt type (the question sentence), for experiment specs; keyed like an experiment's `llms:` mapping.
+MOCK_RULES = [
+    {"pattern": "percentage change in total factor productivity", "response": {"change_pct": -2.0}},
+    {"pattern": "percentage change in the household discount factor", "response": {"change_pct": 0.3}},
+    {"pattern": "percentage change in household consumption", "response": {"change_pct": -15.0}},
+    {"pattern": "percentage change in aggregate demand", "response": {"change_pct": -5.0}},
+    {"pattern": "percentage change in firms' production costs", "response": {"change_pct": 10.0}},
+    {"pattern": "percentage change in the central bank's policy interest rate", "response": {"change_pct": 20.0}},
+    {"pattern": "percentage change in the inflation that households", "response": {"change_pct": 50.0}},
+]
+
+
+def mock_llms(**over):
+    """An `llms:` mapping with one offline LLM called `mock` (temperature 0)."""
+    setting = {"provider": "mock", "temperature": 0.0, "cache": False,
+               "options": {"rules": MOCK_RULES, "default_response": {"change_pct": 0.0}}}
+    return {"mock": {**setting, **over}}
+
 
 def nk_experiment(id="exp", intensities=None, wedge_only=False, with_bad=False, repeats=1,
                   temperature=0.0, api_key_env=None):
@@ -46,7 +64,8 @@ def nk_experiment(id="exp", intensities=None, wedge_only=False, with_bad=False, 
     wedge = ShockSpec(
         id="wedge", variable="wedge_pi", model="nk3", source="llm",
         profile=TimeProfile(kind="narrative_timeline"),
-        llm=LLMSource(template="inflation_expectations.j2", keys=["inflation_expectation_change_pp"],
+        llm=LLMSource(template="nk3/inflation_expectations.j2", keys=["inflation_expectation_change_pp"],
+                      template_vars={"persona": "A tester.", "model_info": ""},
                       mapping="linear", mapping_params={"slope": 0.0025}, events=NK_EVENTS),
     )
     scenarios = [Scenario(id="wedge", shocks=[wedge])]
@@ -74,7 +93,8 @@ def nk_arms_experiment(id="arms", classic_only=False, llm_only=False):
     wedge = ShockSpec(
         id="wedge", variable="wedge_pi", model="nk3", source="llm",
         profile=TimeProfile(kind="narrative_timeline"),
-        llm=LLMSource(template="inflation_expectations.j2", keys=["inflation_expectation_change_pp"],
+        llm=LLMSource(template="nk3/inflation_expectations.j2", keys=["inflation_expectation_change_pp"],
+                      template_vars={"persona": "A tester.", "model_info": ""},
                       mapping="linear", mapping_params={"slope": 0.0025}, events=NK_EVENTS),
     )
     shocks = [classic] if classic_only else [wedge] if llm_only else [classic, wedge]

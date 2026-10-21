@@ -24,6 +24,10 @@ arms:
   shocked:  {linestyle: "-",  alpha: 1.00, linewidth: 1.8}   # everything applied
 
 neutral_color: "#7F7F7F"     # zero reference lines in impulse-response figures; never a model colour
+event_color: "#404040"       # dashed vertical shock-event lines in every figure, whatever the model
+
+# Shade of ranges drawn as bands (spread of repeated draws, or of paired differences across cells) in evaluations.
+band_alpha: 0.15
 
 # Font sizes (points) used by every figure.
 fonts:

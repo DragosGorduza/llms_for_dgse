@@ -1,0 +1,7 @@
+{{ persona | default("Consider a household living in the United Kingdom.") }}
+{{ narrative }}
+Estimate the direct effect of this event on the household's patience: the preference weight on utility next quarter relative to utility this quarter. This is the subjective quarterly discount factor beta, not an interest rate, a market discount rate or the elasticity of intertemporal substitution.
+Without the event, take beta to be {{ baseline_beta | default(0.98) }}. Hold prices, resources, borrowing access, survival probabilities, income expectations and investment returns fixed. Isolate a change in time preference rather than precautionary saving due to income risk or a temporary aversion to consuming particular goods. Use 0 if the narrative gives no reason for patience itself to change.
+Report the additive change in beta in percentage points. Positive means more patient; negative means less patient. A value of 0.1 means add 0.001 to beta, not increase beta by 10%. The resulting beta must be strictly positive and at most 1. This estimate applies to the current quarter's weight on next-quarter utility; it is not annualised.
+Return only one JSON object on its own line, with a plain finite number and no percent sign. Replace the example value with your estimate:
+{"beta_change_pp": 0.0}

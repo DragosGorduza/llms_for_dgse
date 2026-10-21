@@ -1,0 +1,15 @@
+tfp:
+  variable: Z
+  answer_bounds: [-50, 50]
+  description: Percentage change in total factor productivity, relative to its baseline level.
+discount_factor:
+  variable: beta
+  # beta must stay in the model's [0.5, 1.0]; around 0.98 that is -49% to +2%. LLMs often answer -10 to -20.
+  answer_bounds: [-40, 2]
+  description: Percentage change in the household discount factor, relative to its baseline level.
+household_consumption:
+  variable: d
+  # d has baseline 0, so the % is converted with a slope: -40% consumption gives d = +0.04 (as in the notebook).
+  per_pct: -0.001
+  answer_bounds: [-100, 100]
+  description: Percentage change in desired household consumption; moves the taste shifter d.

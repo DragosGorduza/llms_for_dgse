@@ -1,0 +1,22 @@
+id: rbc_mock
+description: Offline RBC check with a mock LLM that answers by prompt type; 2 prompts x 2 personas x 2 scenarios x 2 model-info settings.
+model: rbc
+llms:
+  mock:
+    provider: mock
+    temperature: 0.0
+    api_key_env: null
+    cache: false
+    options:
+      rules:
+        - {pattern: "percentage change in total factor productivity", response: {change_pct: -2.0}}
+        - {pattern: "percentage change in the household discount factor", response: {change_pct: 0.3}}
+      default_response: {change_pct: 0.0}
+T: 30
+prompts: [tfp, discount_factor]
+personas: [normal, economist]
+scenarios:
+  pandemic_wave: {shocks: {4: pandemic_rumours, 8: pandemic_peak, 12: pandemic_recedes}}
+  technology_boom: {shocks: {4: technology_breakthrough, 8: technology_rollout, 12: technology_mature}}
+include_model_info: [false, true]
+tracked: [Z, beta, Y, C, I, K, L]

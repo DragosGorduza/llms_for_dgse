@@ -1,0 +1,5 @@
+# Optional broader context for a scenario (name: text). The event itself comes from the scenario's shocks.
+normal_times: "The economy has been growing at a steady pace for several years, unemployment is low and inflation is close to target."
+recession: "The economy is already in a recession: output has been falling, unemployment is rising and confidence is weak."
+high_inflation: "Inflation has been well above target for the past two years and the central bank has been raising interest rates."
+fragile_finances: "Public debt is high, many households carry large mortgages and the banking system has thin capital buffers."

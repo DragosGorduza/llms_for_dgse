@@ -5,8 +5,8 @@ Run any LLM on any prompt. Nothing here knows about macro models.
 | Piece | File | Purpose |
 | --- | --- | --- |
 | `LLMClient`, `LLMRequest`, `LLMResponse`, registry, disk cache | `base.py` | Provider-independent interface. `complete()` checks the cache, then calls the provider's `_complete()`. |
-| Providers | `providers/` | `openai` (Responses API) and `mock` (offline, rule-driven). |
-| `PromptRenderer` | `prompts.py` | Jinja templates from `prompts/`; undefined variables raise. |
+| Providers | `providers/` | `openai` (Responses API; system certificate store by default, optional `options.ca_bundle`) and `mock` (offline, rule-driven). |
+| `PromptRenderer` | `prompts.py` | Jinja templates from `prompts/<model>/<type>.j2` (slots `persona`, `narrative`, `model_info`); undefined variables raise. |
 | `parse_values`, `extract_json`, `build_answer_model` | `parsing.py` | Takes the LAST JSON object in the text, accepts single quotes, strips `%`, commas and unicode minus, then validates it with a pydantic model: every requested key must be present, convertible to a finite float (no NaN or infinity, no booleans) and inside its optional `answer_bounds`. Extra keys are dropped. Raises `ParseError` naming the bad key. |
 | `get_secret` | `secrets.py` | Environment variable, then `secrets/secrets.env`. Raises `MissingSecretError`. |
 
@@ -34,12 +34,14 @@ The mock provider never caches.
 
 1. Copy `providers/_template.py` to `providers/<name>.py`; implement `_complete` and decorate with `@register_llm("<name>")`. It is auto-discovered.
 2. Read the key with `get_secret(self.config.api_key_env or "<NAME>_API_KEY")` inside `_complete`, never at import time.
-3. Add `configs/llms/<name>.yaml` and the key name to `secrets/secrets.example.env`.
+3. Add the key name to `secrets/secrets.example.env` and use it in an experiment's `llms:` entry (`provider: <name>`, `api_key_env: <NAME>`).
 
 ## Mock provider
 
 `options.rules` is a list of `{pattern, response}`; the first regex matching the prompt wins; otherwise
-`options.default_response`. Use patterns on the narrative text, since the persona and question text are in every prompt.
+`options.default_response`. The `mock` entries of `experiments/<model>/mock.yaml` key their rules on the question
+sentence of each prompt type (for example "percentage change in total factor productivity"), which is unique per type
+and identical with and without model info, so offline answers depend on the prompt type only.
 
 ## Tests (`tests/llms`)
 

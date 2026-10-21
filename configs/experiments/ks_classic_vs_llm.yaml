@@ -1,8 +1,8 @@
 id: ks_classic_vs_llm
-description: Pandemic caution in Krusell-Smith as a classic precautionary-saving shock on d and as an LLM-generated path on d, alone and together (mock LLM). Together they stack on the same input, which illustrates double counting.
+description: Pandemic caution in Krusell-Smith as a classic precautionary-saving shock on d and as an LLM-generated path on d, alone and together (OpenAI gpt-4o-mini). Together they stack on the same input, which illustrates double counting.
 T: 40
 models: [krusell_smith]
-llms: [mock_pandemic]
+llms: [openai_gpt4o_mini]
 scenarios:
   - id: pandemic
     shocks: [ks_classic_precaution, ks_pandemic_d]

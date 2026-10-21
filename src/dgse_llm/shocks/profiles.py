@@ -51,6 +51,16 @@ def from_series(T: int, p: TimeProfile) -> np.ndarray:
     return shape
 
 
+@register_profile("at_periods")
+def at_periods(T: int, p: TimeProfile) -> np.ndarray:
+    """1 in each period listed in `p.periods` (periods beyond the horizon are ignored), 0 elsewhere."""
+    shape = np.zeros(T)
+    for t in p.periods:
+        if 0 <= t < T:
+            shape[t] = 1.0
+    return shape
+
+
 def make_shape(T: int, profile: TimeProfile) -> np.ndarray:
     if profile.kind == "narrative_timeline":
         raise ValueError("narrative_timeline has no fixed shape; it is built from LLM answers")

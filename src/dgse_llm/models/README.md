@@ -24,8 +24,8 @@ Macro models, one `.py` and one `.md` each. A model is a set of sequence-space e
 
 1. Copy `_template.py` to `<name>.py` and edit. It is auto-discovered; nothing else to register.
 2. Write `<name>.md` in the format of `rbc.md`: a plain-language intro, one `### \`name\`` section per variable and per target (with **If it rises:** and **If it falls:** lines for variables), parameters, and a function reference. The conformance tests check this.
-3. Add `configs/models/<name>.yaml` (`name: <name>`) and a colour for the model in `configs/plotting.yaml` (`model_colors`).
-4. Run `pytest tests/models`: the conformance suite picks the new model up automatically.
+3. Add a colour for the model in `configs/plotting.yaml` (`model_colors`), then `experiments/<name>/` (`README.md`, `model.json` register, `generic.yaml`, `mock.yaml`) and `prompts/<name>/` (`prompts.yaml` and one `.j2` per shockable input). Parameter overrides and the solver are set per experiment in its `model:` entry.
+4. Run `pytest tests/models tests/experiments/test_register.py tests/llms/test_prompts.py`: the conformance, register and prompt suites pick the new model up automatically.
 
 ## Solver independence
 

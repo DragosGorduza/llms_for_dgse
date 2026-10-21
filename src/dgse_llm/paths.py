@@ -17,6 +17,10 @@ def configs_dir() -> Path:
     return Path(os.environ.get("DGSE_CONFIGS_DIR", repo_root() / "configs"))
 
 
+def experiments_dir() -> Path:
+    return Path(os.environ.get("DGSE_EXPERIMENTS_DIR", repo_root() / "experiments"))
+
+
 def prompts_dir() -> Path:
     return Path(os.environ.get("DGSE_PROMPTS_DIR", repo_root() / "prompts"))
 

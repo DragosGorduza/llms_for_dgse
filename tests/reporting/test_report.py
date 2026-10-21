@@ -83,6 +83,36 @@ def test_md_table_formats_values_and_escapes_pipes():
 
 
 @pytest.mark.parametrize("plot_name", ["_plot_trajectories", "_plot_irfs"])
+def test_run_plots_mark_named_shock_onset(tmp_path, monkeypatch, plot_name):
+    scenarios = ("baseline", "shocked", "irf")
+    trajectories = pd.DataFrame([
+        {"scenario": scenario, "variable": "Y", "t": period, "value": float(period)}
+        for scenario in scenarios
+        for period in range(4)
+    ])
+    shocks = pd.DataFrame([
+        {"shock_id": "scenario-1", "variable": "wedge_pi", "mode": "additive", "t": period,
+         "value": float(period > 0 and period < 3), "active": 0 < period < 3}
+        for period in range(4)
+    ])
+    config = {"scenario": {"shocks": [{
+        "id": "scenario-1", "variable": "wedge_pi", "source": "llm",
+        "llm": {"occurrences": [{"periods": [1, 2], "name": "energy_price_spike"}]},
+    }]}}
+    figures = []
+    monkeypatch.setattr(report_module.plt, "close", lambda figure: figures.append(figure))
+
+    getattr(report_module, plot_name)(
+        trajectories, tmp_path / "plot.png", "nk3", ["llm"], shocks, config
+    )
+
+    markers = [line for line in figures[-1].axes[0].lines if line.get_label() == "Shock: energy_price_spike (wedge_pi)"]
+    assert len(markers) == 1
+    assert list(markers[0].get_xdata()) == [1, 1]
+    assert markers[0].get_linestyle() == "--"
+
+
+@pytest.mark.parametrize("plot_name", ["_plot_trajectories", "_plot_irfs"])
 def test_plots_show_orange_baseline(tmp_path, monkeypatch, plot_name):
     trajectories = pd.DataFrame([
         {"scenario": scenario, "variable": "Y", "t": period, "value": value}

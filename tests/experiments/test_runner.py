@@ -1,8 +1,8 @@
 """Experiment grid and runner (offline, mock LLM).
 
 Expect:
-- cells = models x scenarios x (LLMs for LLM scenarios) x intensities x modes x repeats; shocks of other models are dropped
-  and cells left without shocks are skipped
+- cells = models x scenarios x (LLMs for LLM scenarios) x intensities x modes x repeats; repeats only for LLMs with
+  temperature != 0; shocks of other models are dropped and cells left without shocks are skipped
 - each run directory has config, manifest, llm_calls, shock paths, trajectories (baseline/shocked/irf) and metrics
 - a failing cell is recorded as failed and does not stop the sweep
 - a linear model's response scales with intensity; baselines are solved once per model/solver/horizon
@@ -15,10 +15,9 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from dgse_llm.experiments import expand_cells, load_experiment, load_run, run_cell, run_experiment
+from dgse_llm.experiments import expand_cells, load_run, resolve_experiment, run_cell, run_experiment
 from dgse_llm.llms import PromptRenderer
-from dgse_llm.paths import configs_dir
-from tests.helpers import nk_experiment
+from tests.helpers import mock_llms, nk_experiment
 
 
 def test_cell_expansion_counts_and_skipping():
@@ -30,7 +29,11 @@ def test_cell_expansion_counts_and_skipping():
 
 def test_sweep_multiplies_cells():
     assert len(expand_cells(nk_experiment(intensities=[0.001, 0.002]))) == 6
-    assert len(expand_cells(nk_experiment(repeats=3, wedge_only=True))) == 3
+    assert len(expand_cells(nk_experiment(repeats=3, wedge_only=True, temperature=0.7))) == 3
+
+
+def test_temperature_zero_runs_once_whatever_the_repeats():
+    assert len(expand_cells(nk_experiment(repeats=3, wedge_only=True))) == 1
 
 
 def test_llm_scenario_without_llms_is_an_error():
@@ -131,13 +134,115 @@ def test_secret_values_never_reach_outputs(tmp_path, monkeypatch):
     assert cfg["llm"] == "mock"
 
 
+def small_spec(llms=None, T=15, **over):
+    raw = {
+        "id": "re", "model": "nk3", "llms": llms or mock_llms(), "T": T, "prompts": ["demand", "cost_push"],
+        "personas": {"p": "A tester."}, "include_model_info": [False],
+        "scenarios": {"one": {"shocks": {4: "energy_price_spike"}}, "wave": {"shocks": {4: "energy_price_spike", 8: "energy_price_fall"}}},
+    }
+    raw.update(over)
+    return resolve_experiment(raw)
+
+
+def test_rerun_keeps_completed_runs_untouched(tmp_path):
+    cfg, skipped = small_spec(), []
+    first = run_experiment(cfg, out_root=tmp_path)
+    manifest_files = sorted((tmp_path / "re").glob("*/manifest.json"))
+    before = {p: p.read_text(encoding="utf-8") for p in manifest_files}
+    second = run_experiment(cfg, out_root=tmp_path, on_skip=skipped.append)
+    assert len(first) == len(second) == len(skipped) == 4
+    assert {p: p.read_text(encoding="utf-8") for p in manifest_files} == before, "files are not rewritten"
+    assert [m.answer for m in second] == [m.answer for m in first]
+    assert (tmp_path / "re" / "index.parquet").exists() and (tmp_path / "re" / "summary.parquet").exists()
+
+
+def test_force_runs_everything_again(tmp_path):
+    cfg, skipped = small_spec(), []
+    run_experiment(cfg, out_root=tmp_path)
+    run_experiment(cfg, out_root=tmp_path, on_skip=skipped.append, force=True)
+    assert skipped == []
+
+
+def test_a_changed_setup_is_run_again_and_the_rest_is_kept(tmp_path):
+    run_experiment(small_spec(), out_root=tmp_path)
+    skipped = []
+    run_experiment(small_spec(T=20), out_root=tmp_path, on_skip=skipped.append)
+    assert skipped == [], "the horizon is part of every run's setup"
+    skipped = []
+    more = small_spec(T=20, scenarios={
+        "one": {"shocks": {4: "energy_price_spike"}},
+        "three": {"shocks": {4: "energy_price_spike", 8: "energy_price_fall", 12: "credit_crunch"}},
+    })
+    manifests = run_experiment(more, out_root=tmp_path, on_skip=skipped.append)
+    assert len(manifests) == 4 and len(skipped) == 2, "the unchanged 'one' scenario is kept for both prompts"
+
+
+def test_an_edited_prompt_template_is_run_again(tmp_path):
+    import shutil
+
+    from dgse_llm.paths import prompts_dir
+
+    copy = tmp_path / "prompts"
+    shutil.copytree(prompts_dir(), copy)
+    cfg, skipped = small_spec(), []
+    run_experiment(cfg, out_root=tmp_path / "out", renderer=PromptRenderer(copy))
+    demand = copy / "nk3" / "demand.j2"
+    demand.write_text(demand.read_text(encoding="utf-8") + "\nBe concise.\n", encoding="utf-8")
+    run_experiment(cfg, out_root=tmp_path / "out", renderer=PromptRenderer(copy), on_skip=skipped.append)
+    assert sorted(m.meta["prompt"] for m in skipped) == ["cost_push", "cost_push"], "only the demand cells re-ran"
+
+
+def wild_llm(value):
+    return {"wild": {"provider": "mock", "temperature": 0.0, "cache": False,
+                     "options": {"default_response": {"change_pct": value}}}}
+
+
+def test_failed_runs_are_logged_by_error_name_with_the_returned_text(tmp_path):
+    manifests = run_experiment(small_spec(llms=wild_llm(9000)), out_root=tmp_path)
+    assert {m.status for m in manifests} == {"failed"}
+    logs = sorted((tmp_path / "re" / "errors").glob("*/*.json"))
+    assert len(logs) == 4 and {p.parent.name for p in logs} == {"ParseError"}
+    record = json.loads(logs[0].read_text(encoding="utf-8"))
+    assert record["error_type"] == "ParseError" and "less than or equal to" in record["error"]
+    call = record["llm_calls"][0]
+    assert "9000" in call["response_text"] and "Estimate the percentage change" in call["prompt"]
+    assert record["axes"]["persona"] == "p" and record["run_id"] == logs[0].stem
+
+
+def test_other_failures_get_their_own_error_folder(tmp_path):
+    run_experiment(nk_experiment(with_bad=True), out_root=tmp_path)
+    logs = list((tmp_path / "exp" / "errors").glob("*/*.json"))
+    assert len(logs) == 1 and logs[0].parent.name == "ShockError"
+    assert "not shockable" in json.loads(logs[0].read_text(encoding="utf-8"))["error"]
+
+
+def test_failed_runs_are_retried_and_their_error_log_cleared_on_success(tmp_path):
+    run_experiment(small_spec(llms=wild_llm(9000)), out_root=tmp_path)
+    skipped = []
+    manifests = run_experiment(small_spec(llms=wild_llm(1.0)), out_root=tmp_path, on_skip=skipped.append)
+    assert skipped == [] and {m.status for m in manifests} == {"ok"}
+    assert list((tmp_path / "re" / "errors").glob("*/*.json")) == []
+
+
+def test_a_failed_rerun_leaves_no_stale_results(tmp_path):
+    run_experiment(small_spec(llms=wild_llm(1.0)), out_root=tmp_path)
+    run = next((tmp_path / "re").glob("*demand.p.one*"))
+    assert (run / "trajectories.parquet").exists()
+    run_experiment(small_spec(llms=wild_llm(9000)), out_root=tmp_path)
+    assert not (run / "trajectories.parquet").exists() and not (run / "metrics.json").exists()
+    assert json.loads((run / "manifest.json").read_text(encoding="utf-8"))["status"] == "failed"
+
+
 @pytest.mark.slow
-def test_krusell_smith_pandemic_experiment(tmp_path):
-    cfg = load_experiment(configs_dir() / "experiments" / "ks_pandemic_mock.yaml").model_copy(update={"T": 40})
+def test_krusell_smith_household_consumption_experiment(tmp_path):
+    cfg = resolve_experiment({
+        "id": "ks", "model": "krusell_smith", "llms": mock_llms(), "T": 20,
+        "prompts": ["household_consumption"], "personas": ["normal"],
+        "scenarios": {"pandemic": {"shocks": {4: "pandemic_rumours"}}}, "include_model_info": [False],
+    })
     manifests = run_experiment(cfg, out_root=tmp_path)
-    assert [m.status for m in manifests] == ["ok"] * 3, [m.error for m in manifests]
-    for m in manifests:
-        run = load_run(tmp_path / cfg.id / m.run_id)
-        assert m.n_llm_calls == 6
-        assert run.metrics["C"]["peak"] < 0, "a positive taste shifter lowers consumption"
-        assert run.metrics["d"]["peak"] > 0
+    assert [m.status for m in manifests] == ["ok"], [m.error for m in manifests]
+    run = load_run(tmp_path / "ks" / manifests[0].run_id)
+    assert manifests[0].answer == -15.0 and manifests[0].n_llm_calls == 1
+    assert run.metrics["C"]["peak"] < 0, "a positive taste shifter lowers consumption"
+    assert run.metrics["d"]["peak"] == pytest.approx(0.015)

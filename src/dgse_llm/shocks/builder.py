@@ -60,9 +60,9 @@ def resolve_classic(spec: ShockSpec, model: Model) -> ShockSpec:
     )
 
 
-def _ask_llm(spec, llm, renderer, narrative, t, recorder, salt) -> tuple[float, str]:
+def _ask_llm(spec, llm, renderer, event, t, recorder, salt) -> tuple[float, str]:
     src = spec.llm
-    prompt = renderer.render(src.template, **{**src.template_vars, "narrative": narrative, "t": t})
+    prompt = renderer.render(src.template, **{**src.template_vars, "narrative": src.narrative, "event": event, "t": t})
     base = dict(
         id=uuid.uuid4().hex[:10],
         shock_id=spec.id,
@@ -128,17 +128,36 @@ def build_shock_path(
             raise ShockError(f"Shock '{spec.id}' needs an LLM but none was configured")
         renderer = renderer or PromptRenderer()
         src = spec.llm
+        # pct answer -> fraction of the input's baseline level, when the shock is relative to it.
+        unit = 1.0
+        if src.scale_by_baseline:
+            level = float(model.steady_state[spec.variable])
+            if level == 0.0:
+                raise ShockError(
+                    f"'{spec.variable}' of model '{model.name}' has baseline 0, so a relative change is undefined; "
+                    "give a per_pct conversion instead"
+                )
+            unit = level
         memo: dict[str, tuple[float, str]] = {}
         call_ids: list[str] = []
 
-        def ask(narrative: str, t: int) -> float:
-            # One call per distinct narrative, however many periods it covers.
-            if narrative not in memo:
-                memo[narrative] = _ask_llm(spec, llm, renderer, narrative, t, recorder, cache_salt)
-                call_ids.append(memo[narrative][1])
-            return memo[narrative][0]
+        def ask(event: str, t: int) -> float:
+            # One call per distinct event text, however many periods it covers.
+            if event not in memo:
+                memo[event] = _ask_llm(spec, llm, renderer, event, t, recorder, cache_salt)
+                call_ids.append(memo[event][1])
+            return memo[event][0] * unit
 
-        if src.events:
+        if src.occurrences:
+            values = np.zeros(T)
+            active = np.zeros(T, dtype=bool)
+            for occ in src.occurrences:
+                v = ask(occ.text, min(occ.periods))
+                for t in occ.periods:
+                    if 0 <= t < T:
+                        values[t] += spec.intensity * v
+                        active[t] = True
+        elif src.events:
             values = np.zeros(T)
             active = np.zeros(T, dtype=bool)
             t_last = src.events[-1].t
@@ -159,7 +178,10 @@ def build_shock_path(
             shape = make_shape(T, profile)
             values = spec.intensity * v * shape
             active = shape != 0
-        provenance.update(llm_call_ids=call_ids, mapping=src.mapping, mapping_params=src.mapping_params)
+        provenance.update(
+            llm_call_ids=call_ids, mapping=src.mapping, mapping_params=src.mapping_params,
+            scale_by_baseline=src.scale_by_baseline,
+        )
     return ShockPath(
         shock_id=spec.id,
         variable=spec.variable,

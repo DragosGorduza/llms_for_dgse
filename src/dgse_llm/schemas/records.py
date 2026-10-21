@@ -63,6 +63,10 @@ class RunManifest(_Base):
     intensity: float | None = None
     mode: str | None = None
     repeat: int = 0
+    # Experiment axes of the run (prompt, persona, scenario, model_info); empty for hand-written configs.
+    meta: dict[str, Any] = Field(default_factory=dict)
+    # The raw number the LLM answered (relative % change), first LLM shock; None without an LLM or after a failure.
+    answer: float | None = None
     # One entry per modified variable: {"variable", "mode", "source", "shock_id"}; source is manual, classic or llm.
     modified: list[dict[str, Any]] = Field(default_factory=list)
     # Solved economies stored in trajectories.parquet: always baseline and shocked (all shocks applied); when the

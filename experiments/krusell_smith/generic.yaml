@@ -1,0 +1,39 @@
+id: ks_generic
+description: >
+  Krusell-Smith: every prompt x every persona x six scenarios (one-time, multi-period, with and without a broader
+  narrative), with and without the model description in the prompt, on two LLM settings. Needs OPENAI_API_KEY in
+  secrets/secrets.env. 3 prompts x 4 personas x 6 scenarios x 2 model-info settings = 144 cells per LLM, times the
+  repeats of every LLM whose temperature is not 0.
+model: krusell_smith            # or {name: krusell_smith, params: {nA: 500}, solver: numpy_newton}
+
+# name -> settings; add any number of entries. temperature 0: one cached draw per cell. Other temperatures and null
+# (models that take no temperature, e.g. reasoning models): `repeats` fresh draws per cell. api_key_env is the NAME of
+# the secret in secrets/secrets.env, null if none is needed.
+llms:
+  gpt4o_mini_t0:
+    provider: openai
+    model_id: gpt-4o-mini
+    temperature: 0.0
+    api_key_env: OPENAI_API_KEY
+
+T: 60
+prompts: [tfp, discount_factor, household_consumption]   # prompts/krusell_smith/
+personas: [normal,economist]                                             # all, or a list of names from experiments/personas.yaml
+
+# name -> optional narrative (a name from experiments/narratives.yaml, or literal text) and shocks: which shock (a file
+# in experiments/shocks/) happens in which period. A period can be a range such as "8-11" or hold a list of shocks.
+scenarios:
+  pandemic_one_time: {shocks: {4: pandemic_rumours}}
+  pandemic_wave: {shocks: {4: pandemic_rumours, 8: pandemic_peak, 12: pandemic_recedes}}
+  pandemic_in_recession:
+    narrative: recession
+    shocks: {4: pandemic_rumours, 8: pandemic_peak, 12: pandemic_recedes}
+  #mixed_shocks: {shocks: {5: energy_price_spike, 12: sovereign_default, 20: technology_breakthrough}}
+  #sovereign_default_crisis:
+  #  narrative: fragile_finances
+  #  shocks: {4: sovereign_bond_selloff, 8: sovereign_default, 12: sovereign_restructuring}
+  #technology_boom: {shocks: {4: technology_breakthrough, 8: technology_rollout, 12: technology_mature}}
+
+include_model_info: [false, true]   # run every cell with and without the model name and parameters in the prompt
+repeats: 5
+tracked: [Z, d, beta, Y, C, K, r, w]

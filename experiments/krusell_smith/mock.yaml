@@ -1,0 +1,26 @@
+id: ks_mock
+description: Offline Krusell-Smith check with a mock LLM that answers by prompt type; 3 prompts x 2 personas x 2 scenarios x 2 model-info settings.
+model: krusell_smith
+llms:
+  mock:
+    provider: mock
+    temperature: 0.0
+    api_key_env: null
+    cache: false
+    options:
+      # First rule whose pattern is found in the prompt wins; patterns are the question sentence of each prompt type.
+      rules:
+        - {pattern: "percentage change in total factor productivity", response: {change_pct: -2.0}}
+        - {pattern: "percentage change in the household discount factor", response: {change_pct: 0.3}}
+        - {pattern: "percentage change in household consumption", response: {change_pct: -15.0}}
+      default_response: {change_pct: 0.0}
+T: 30
+prompts: [tfp, discount_factor, household_consumption]
+personas: [normal, economist]
+scenarios:
+  pandemic_one_time: {shocks: {4: pandemic_rumours}}
+  pandemic_wave:
+    narrative: recession
+    shocks: {4: pandemic_rumours, 8: pandemic_peak, 12: pandemic_recedes}
+include_model_info: [false, true]
+tracked: [Z, d, beta, Y, C, K, r]

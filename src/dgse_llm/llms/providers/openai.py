@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import ssl
+
 from dgse_llm.schemas import LLMConfig
 
 from ..base import LLMClient, LLMRequest, LLMResponse, register_llm
@@ -20,10 +22,13 @@ class OpenAILLM(LLMClient):
         if self._client is None:
             key = get_secret(self.config.api_key_env or "OPENAI_API_KEY")
             try:
-                from openai import OpenAI
+                from openai import DefaultHttpxClient, OpenAI
             except ImportError as exc:
                 raise ImportError("The 'openai' package is required: pip install openai") from exc
-            self._client = OpenAI(api_key=key)
+            ca_bundle = self.config.options.get("ca_bundle")
+            verify = ca_bundle or ssl.create_default_context()
+            http_client = DefaultHttpxClient(verify=verify)
+            self._client = OpenAI(api_key=key, http_client=http_client)
         return self._client
 
     def _complete(self, request: LLMRequest) -> LLMResponse:

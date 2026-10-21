@@ -1,0 +1,9 @@
+tfp:
+  variable: Z
+  answer_bounds: [-50, 50]
+  description: Percentage change in total factor productivity, relative to its baseline level.
+discount_factor:
+  variable: beta
+  # beta must stay in the model's [0.5, 1.2]; around 0.99 the upper end is +1% to keep beta below 1.
+  answer_bounds: [-40, 1]
+  description: Percentage change in the household discount factor, relative to its baseline level.

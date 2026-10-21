@@ -28,7 +28,8 @@ def mock_llm(**options):
 
 def llm_spec(variable="wedge_pi", events=None, tail_decay=1.0, intensity=1.0, mode="additive", profile=None):
     src = LLMSource(
-        template="inflation_expectations.j2",
+        template="nk3/inflation_expectations.j2",
+        template_vars={"persona": "A tester.", "model_info": ""},
         keys=["inflation_expectation_change_pp"],
         mapping="linear",
         mapping_params={"slope": 0.01},
@@ -250,3 +251,98 @@ def test_answer_inside_bounds_and_string_numbers_are_accepted(models):
     spec = llm_spec()
     spec.llm.answer_bounds = {"inflation_expectation_change_pp": (-50.0, 50.0)}
     assert build_shock_path(spec, m, T, llm=llm).values[0] == pytest.approx(0.02)
+
+
+# ---- relative changes at chosen periods ----------------------------------------------------------------------
+
+def relative_spec(variable="Z", periods=(2, 5), narrative="NARRATIVE", scale=True):
+    src = LLMSource(
+        template="rbc/tfp.j2", keys=["change_pct"], mapping="pct" if scale else "linear",
+        mapping_params={} if scale else {"slope": 0.01}, scale_by_baseline=scale, narrative=narrative,
+        template_vars={"persona": "A tester.", "model_info": ""},
+    )
+    return ShockSpec(id="r", variable=variable, source="llm", llm=src,
+                     profile=TimeProfile(kind="at_periods", periods=list(periods)))
+
+
+def test_relative_answer_scales_the_baseline_level_in_chosen_periods(models):
+    m, calls = models["rbc"], []
+    llm = mock_llm(default_response={"change_pct": -2.0})
+    path = build_shock_path(relative_spec(), m, T, llm=llm, recorder=calls.append)
+    assert [i for i, a in enumerate(path.active) if a] == [2, 5]
+    assert path.values[2] == pytest.approx(-0.02 * m.steady_state["Z"]) and path.values[0] == 0
+    assert len(calls) == 1, "one call however many periods"
+    assert "NARRATIVE" in calls[0].prompt and path.provenance["scale_by_baseline"] is True
+    exog = apply_shocks(m, m.baseline_exog(T), [path])
+    assert exog["Z"][2] == pytest.approx(m.steady_state["Z"] * 0.98) and exog["Z"][3] == pytest.approx(m.steady_state["Z"])
+
+
+def test_relative_to_a_zero_baseline_is_rejected(models):
+    llm = mock_llm(default_response={"change_pct": 1.0})
+    with pytest.raises(ShockError, match="baseline 0"):
+        build_shock_path(relative_spec(variable="u"), models["nk3"], T, llm=llm)
+
+
+def test_per_pct_conversion_for_zero_baseline_inputs(models):
+    llm = mock_llm(default_response={"change_pct": -40.0})
+    path = build_shock_path(relative_spec(variable="u", scale=False), models["nk3"], T, llm=llm)
+    assert path.values[2] == pytest.approx(-0.4) and path.values[5] == pytest.approx(-0.4)
+
+
+# ---- scenario events (occurrences) ---------------------------------------------------------------------------
+
+def occurrence_spec(occurrences, variable="u", model_template="nk3/cost_push.j2", scale=False, narrative=""):
+    src = LLMSource(
+        template=model_template, keys=["change_pct"], mapping="pct" if scale else "linear",
+        mapping_params={} if scale else {"slope": 0.01}, scale_by_baseline=scale, narrative=narrative,
+        occurrences=occurrences, template_vars={"persona": "A tester.", "model_info": ""},
+    )
+    return ShockSpec(id="o", variable=variable, source="llm", llm=src)
+
+
+EVENT_RULES = [
+    {"pattern": "FIRST event", "response": {"change_pct": 2.0}},
+    {"pattern": "SECOND event", "response": {"change_pct": 5.0}},
+]
+
+
+def test_each_event_is_one_call_applied_only_in_its_periods(models):
+    m, llm, calls = models["nk3"], mock_llm(rules=EVENT_RULES), []
+    spec = occurrence_spec(
+        [{"periods": [2], "text": "FIRST event"}, {"periods": [5, 6, 7], "text": "SECOND event"}], narrative="CONTEXT"
+    )
+    path = build_shock_path(spec, m, T, llm=llm, recorder=calls.append)
+    v = np.array(path.values)
+    assert v[2] == pytest.approx(0.02) and np.allclose(v[5:8], 0.05)
+    assert v[3] == 0 and v[4] == 0 and v[8:].sum() == 0, "nothing is held between events"
+    assert [i for i, a in enumerate(path.active) if a] == [2, 5, 6, 7]
+    assert len(calls) == 2 and [c.context["t"] for c in calls] == [2, 5]
+    assert all("CONTEXT" in c.prompt for c in calls) and "FIRST event" in calls[0].prompt
+    assert "SECOND event" not in calls[0].prompt
+
+
+def test_the_same_event_text_is_asked_once(models):
+    llm = mock_llm(rules=EVENT_RULES)
+    spec = occurrence_spec([{"periods": [1], "text": "FIRST event"}, {"periods": [4], "text": "FIRST event"}])
+    path = build_shock_path(spec, models["nk3"], T, llm=llm)
+    assert len(llm.calls) == 1 and path.values[1] == path.values[4] == pytest.approx(0.02)
+
+
+def test_events_in_the_same_period_add_up(models):
+    llm = mock_llm(rules=EVENT_RULES)
+    spec = occurrence_spec([{"periods": [3], "text": "FIRST event"}, {"periods": [3], "text": "SECOND event"}])
+    assert build_shock_path(spec, models["nk3"], T, llm=llm).values[3] == pytest.approx(0.07)
+
+
+def test_event_periods_beyond_the_horizon_are_ignored(models):
+    llm = mock_llm(rules=EVENT_RULES)
+    path = build_shock_path(occurrence_spec([{"periods": [10, 11, 12, 13], "text": "FIRST event"}]), models["nk3"], T, llm=llm)
+    assert [i for i, a in enumerate(path.active) if a] == [10, 11]
+
+
+def test_relative_events_scale_the_baseline_level(models):
+    m = models["rbc"]
+    llm = mock_llm(rules=EVENT_RULES)
+    spec = occurrence_spec([{"periods": [4, 8], "text": "SECOND event"}], variable="Z", model_template="rbc/tfp.j2", scale=True)
+    path = build_shock_path(spec, m, T, llm=llm)
+    assert path.values[4] == path.values[8] == pytest.approx(0.05 * m.steady_state["Z"])

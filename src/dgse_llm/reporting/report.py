@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
 from dgse_llm.experiments.store import RunData, load_run  # noqa: E402
+from dgse_llm.experiments.summary import AXES, build_summary, info_effect, run_table  # noqa: E402
 from dgse_llm.reporting.style import (  # noqa: E402
     arm_label,
     arm_style,
@@ -87,8 +88,12 @@ ARM_ORDER = ("baseline", "classic", "llm", "shocked")
 IRF_SCENARIO = {"classic": "irf_classic", "llm": "irf_llm", "shocked": "irf"}
 
 
-def _plot_trajectories(traj: pd.DataFrame, path: Path, model: str, kinds: list[str]) -> None:
+def _plot_trajectories(
+    traj: pd.DataFrame, path: Path, model: str, kinds: list[str],
+    shocks: pd.DataFrame | None = None, config: dict | None = None,
+) -> None:
     style = load_style()
+    markers = _shock_markers(shocks, config or {}) if shocks is not None else []
     arms = [a for a in ARM_ORDER if a in set(traj["scenario"])]
     variables = list(dict.fromkeys(traj[traj["scenario"] == "shocked"]["variable"]))
     fig, axes = _grid(variables, "Model paths: base-model versus shocked economies")
@@ -96,14 +101,62 @@ def _plot_trajectories(traj: pd.DataFrame, path: Path, model: str, kinds: list[s
         for arm in arms:
             values = traj[(traj["scenario"] == arm) & (traj["variable"] == variable)].sort_values("t")
             ax.plot(values["t"], values["value"], label=arm_label(arm, kinds), **arm_style(arm, model, style))
+        _add_shock_markers(ax, markers)
         _style_axis(ax, variable)
     for ax in axes[len(variables):]:
         ax.set_visible(False)
     _save(fig, path)
 
 
-def _plot_irfs(traj: pd.DataFrame, path: Path, model: str, kinds: list[str]) -> None:
+def _shock_markers(shocks: pd.DataFrame, config: dict) -> list[tuple[int, str]]:
+    """Return shock onset periods and readable labels from the saved paths and resolved config."""
+    if shocks.empty:
+        return []
+
+    specs = {spec.get("id"): spec for spec in config.get("scenario", {}).get("shocks", [])}
+    markers = set()
+    for (shock_id, variable, _mode), rows in shocks.groupby(
+        ["shock_id", "variable", "mode"], sort=False
+    ):
+        spec = specs.get(shock_id, {})
+        occurrences = (spec.get("llm") or {}).get("occurrences", [])
+        if occurrences:
+            active_periods = set(rows.loc[rows["active"], "t"].astype(int))
+            for occurrence in occurrences:
+                periods = occurrence.get("periods", [])
+                if not periods:
+                    continue
+                period = min(periods)
+                if period in active_periods:
+                    name = occurrence.get("name") or shock_id
+                    markers.add((int(period), f"Shock: {name} ({variable})"))
+            continue
+
+        profile = spec.get("profile") or {}
+        if profile.get("kind") == "at_periods":
+            active_periods = set(rows.loc[rows["active"], "t"].astype(int))
+            starts = [period for period in profile.get("periods", []) if period in active_periods]
+        else:
+            ordered = rows.sort_values("t")
+            active = ordered["active"].fillna(False).astype(bool)
+            starts = ordered.loc[active & ~active.shift(1, fill_value=False), "t"].tolist()
+        name = spec.get("classic") or shock_id
+        markers.update((int(period), f"Shock: {name} ({variable})") for period in starts)
+    return sorted(markers)
+
+
+def _add_shock_markers(ax, markers: list[tuple[int, str]]) -> None:
+    color = load_style()["event_color"]
+    for period, label in markers:
+        ax.axvline(period, color=color, linestyle="--", linewidth=1, alpha=0.7, label=label)
+
+
+def _plot_irfs(
+    traj: pd.DataFrame, path: Path, model: str, kinds: list[str],
+    shocks: pd.DataFrame | None = None, config: dict | None = None,
+) -> None:
     style = load_style()
+    markers = _shock_markers(shocks, config or {}) if shocks is not None else []
     present = set(traj["scenario"])
     arms = [a for a in ("classic", "llm", "shocked") if IRF_SCENARIO[a] in present]
     variables = list(dict.fromkeys(traj[traj["scenario"] == "irf"]["variable"]))
@@ -113,6 +166,7 @@ def _plot_irfs(traj: pd.DataFrame, path: Path, model: str, kinds: list[str]) -> 
             d = traj[(traj["scenario"] == IRF_SCENARIO[arm]) & (traj["variable"] == v)].sort_values("t")
             effect = arm_label(arm, kinds).removeprefix("base-model + ")
             ax.plot(d["t"], d["value"], label=effect, **arm_style(arm, model, style))
+        _add_shock_markers(ax, markers)
         ax.axhline(0, color=style["neutral_color"], linestyle="--", linewidth=1, label="base-model")
         _style_axis(ax, v)
     for ax in axes[len(variables):]:
@@ -157,6 +211,8 @@ def write_run_report(run_dir: str | Path) -> Path:
     )
     if cfg["model"]["params"]:
         out.append("Parameter overrides: " + ", ".join(f"`{k}={v}`" for k, v in cfg["model"]["params"].items()) + "\n")
+    if m.meta:
+        out.append(md_table([{**m.meta, "answer": m.answer}], [*m.meta, "answer"]))
 
     out.append("## Modified variables\n")
     out.append(md_table(m.modified, ["shock_id", "variable", "mode", "source"]))
@@ -176,10 +232,11 @@ def write_run_report(run_dir: str | Path) -> Path:
         out.append(f"Parsed: `{call.parsed}`" + (f". Error: `{call.error}`" if call.error else "") + "\n")
 
     if len(run.trajectories):
-        _plot_trajectories(run.trajectories, fig_dir / "trajectories.png", m.model, kinds)
+        _plot_trajectories(run.trajectories, fig_dir / "trajectories.png", m.model, kinds,
+                   run.shock_paths, cfg)
         out.append("## Model paths\n\nEach shocked economy against the base-model (all shocks removed).\n\n"
                    "![model paths](figures/trajectories.png)\n")
-        _plot_irfs(run.trajectories, fig_dir / "irf.png", m.model, kinds)
+        _plot_irfs(run.trajectories, fig_dir / "irf.png", m.model, kinds, run.shock_paths, cfg)
         out.append("## Impulse responses\n\n![irf](figures/irf.png)\n")
         rows = [{"variable": v, **vals} for v, vals in run.metrics.items()]
         out.append("## Metrics\n")
@@ -230,12 +287,27 @@ def write_experiment_report(exp_dir: str | Path) -> Path:
     out.append(f"{len(index)} runs, {n_ok} ok, {len(index) - n_ok} failed.\n")
 
     out.append("## Runs\n")
-    cols = ["run_id", "status", "model", "llm", "scenario", "intensity", "mode", "repeat", "n_llm_calls", "converged", "modified"]
+    cols = ["run_id", "status", "model", "llm", "scenario", "prompt", "persona", "model_info",
+            "answer", "intensity", "mode", "repeat", "n_llm_calls", "converged", "modified"]
     out.append(md_table(index.to_dict("records"), [c for c in cols if c in index.columns]))
     failed = index[index["status"] != "ok"]
     if len(failed):
         out.append("## Failures\n")
         out.append(md_table(failed.to_dict("records"), ["run_id", "error"]))
+
+    summary = build_summary(run_table(exp)) if n_ok else pd.DataFrame()
+    if not summary.empty:
+        out.append("## Answers by cell (relative % change)\n")
+        out.append("Raw LLM answers. `n` is the number of draws (1 at temperature 0).\n")
+        answer_cols = ["llm", *AXES, "model_info", "n", "answer_mean", "answer_std", "answer_min", "answer_median", "answer_max"]
+        out.append(md_table(summary.to_dict("records"), answer_cols))
+        effect = info_effect(summary)
+        if not effect.empty:
+            out.append("## Effect of showing the model to the LLM\n")
+            out.append("Mean answer with the model's name, description and parameters in the prompt minus without.\n")
+            out.append(md_table(effect.to_dict("records"), ["llm", *AXES, "answer_without", "answer_with", "diff"]))
+            out.append(f"Mean difference {effect['diff'].mean():.4g}; mean absolute difference "
+                       f"{effect['diff'].abs().mean():.4g}.\n")
 
     runs: list[RunData] = [load_run(exp / rid) for rid in index.loc[index["status"] == "ok", "run_id"]]
     if runs:
@@ -264,12 +336,19 @@ def write_experiment_report(exp_dir: str | Path) -> Path:
             )
         fig, axes = _grid(shown, "Impulse responses by run (colour = model)")
         for ax, v in zip(axes, shown):
+            marked = set()
             for r in runs:
                 d = r.trajectories[(r.trajectories["scenario"] == "irf") & (r.trajectories["variable"] == v)]
                 if len(d):
                     c, ls, alpha = look[r.manifest.run_id]
                     ax.plot(d["t"], d["value"], label=run_label(r.manifest), color=c, linestyle=ls, alpha=alpha,
                             linewidth=1.8)
+                    for period, shock_label in _shock_markers(r.shock_paths, r.config):
+                        label = f"{shock_label} | {r.manifest.model}"
+                        if (period, label) not in marked:
+                            ax.axvline(period, color=style["event_color"], linestyle="--",
+                                       linewidth=1, alpha=0.7, label=label)
+                            marked.add((period, label))
             ax.axhline(0, color=style["neutral_color"], linestyle="--", linewidth=1, label="base-model")
             _style_axis(ax, v)
         for ax in axes[len(shown):]:

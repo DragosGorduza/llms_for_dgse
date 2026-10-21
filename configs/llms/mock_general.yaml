@@ -1,0 +1,16 @@
+name: mock_general
+provider: mock
+model_id: mock
+temperature: 0.0
+cache: false
+options:
+  # Offline answers keyed on the question sentence of each prompt kind, ignoring persona, narrative and model info.
+  rules:
+    - {pattern: "percentage change in total factor productivity", response: {change_pct: -2.0}}
+    - {pattern: "percentage change in the household discount factor", response: {change_pct: 0.3}}
+    - {pattern: "percentage change in household consumption", response: {change_pct: -15.0}}
+    - {pattern: "percentage change in aggregate demand", response: {change_pct: -5.0}}
+    - {pattern: "percentage change in firms' production costs", response: {change_pct: 10.0}}
+    - {pattern: "percentage change in the central bank's policy interest rate", response: {change_pct: 20.0}}
+    - {pattern: "percentage change in the inflation that households", response: {change_pct: 50.0}}
+  default_response: {change_pct: 0.0}

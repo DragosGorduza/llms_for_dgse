@@ -29,7 +29,8 @@ from dgse_llm.shocks import apply_shocks, build_shock_path
 from dgse_llm.solvers import Solution, build_solver
 
 from .metrics import compute_metrics
-from .store import RunStore, write_index
+from .store import RunStore, clear_error_logs, load_calls, load_manifest, write_error_log, write_index
+from .summary import write_summary
 
 
 @dataclass
@@ -48,7 +49,11 @@ def _slug(*parts) -> str:
 
 
 def expand_cells(cfg: ExperimentConfig) -> list[Cell]:
-    """Models x scenarios x LLMs (only if the scenario uses an LLM) x intensities x modes x repeats."""
+    """Models x scenarios x LLMs (only if the scenario uses an LLM) x intensities x modes x repeats.
+
+    Repeats apply only to LLMs with temperature != 0 (or no temperature, as for reasoning models): at temperature 0
+    the answer is deterministic and cached, so one draw is enough.
+    """
     intensities = cfg.sweep.intensities or [None]
     modes = cfg.sweep.modes or [None]
     cells: list[Cell] = []
@@ -64,12 +69,14 @@ def expand_cells(cfg: ExperimentConfig) -> list[Cell]:
             for llm in cfg.llms if needs_llm else [None]:
                 for intensity in intensities:
                     for mode in modes:
-                        for repeat in range(cfg.sweep.repeats):
-                            run_id = _slug(
-                                model.name, llm.name if llm else "nollm", scenario.id,
-                                f"i{'-' if intensity is None else intensity}",
-                                f"m{mode or '-'}", f"r{repeat}",
-                            )
+                        draws = cfg.sweep.repeats if llm is not None and llm.temperature != 0 else 1
+                        for repeat in range(draws):
+                            parts = [model.name, llm.name if llm else "nollm", scenario.id]
+                            if intensity is not None:
+                                parts.append(f"i{intensity}")
+                            if mode is not None:
+                                parts.append(f"m{mode}")
+                            run_id = _slug(*parts, f"r{repeat}")
                             cells.append(Cell(run_id, model, llm, scenario_for_model, intensity, mode, repeat))
     return cells
 
@@ -99,6 +106,44 @@ def _resolved_config(cfg: ExperimentConfig, cell: Cell) -> dict:
     }
 
 
+def _expected_prompt_hashes(cell: Cell, renderer: PromptRenderer) -> set[str] | None:
+    """Hashes of the prompts this cell would send now (rendered, nothing is called), or None if not checkable."""
+    hashes: set[str] = set()
+    for shock in cell.scenario.shocks:
+        src = shock.llm
+        if shock.source != "llm" or src is None or not src.occurrences:
+            return None
+        for occ in src.occurrences:
+            variables = {**src.template_vars, "narrative": src.narrative, "event": occ.text, "t": min(occ.periods)}
+            hashes.add(stable_hash(renderer.render(src.template, **variables)))
+    return hashes
+
+
+def _reusable(exp_dir: Path, cfg: ExperimentConfig, cell: Cell, renderer: PromptRenderer) -> RunManifest | None:
+    """The manifest of an earlier successful run of exactly this cell, or None if it has to be (re)run.
+
+    Reusable when the run finished ok, its files are all there, its config hash equals the current one (model,
+    parameters, LLM settings, scenario, conversion, bounds) and the prompts that would be sent now are the ones that
+    were sent then, so an edited template triggers a re-run.
+    """
+    run_dir = exp_dir / cell.run_id
+    manifest = load_manifest(run_dir)
+    if manifest is None or manifest.status != "ok":
+        return None
+    if manifest.config_hash != stable_hash(_resolved_config(cfg, cell)):
+        return None
+    if not all((run_dir / name).exists() for name in ("trajectories.parquet", "metrics.json", "shock_paths.parquet")):
+        return None
+    try:
+        expected = _expected_prompt_hashes(cell, renderer)
+        recorded = {c.prompt_hash for c in load_calls(run_dir) if not c.error}
+    except Exception:  # an unreadable log or a template that no longer renders: run it again
+        return None
+    if expected is not None and expected != recorded:
+        return None
+    return manifest
+
+
 def run_cell(
     cfg: ExperimentConfig,
     cell: Cell,
@@ -112,6 +157,8 @@ def run_cell(
     baselines = baselines if baselines is not None else {}
     resolved = _resolved_config(cfg, cell)
     store = RunStore(out_dir / cell.run_id)
+    store.clear()
+    clear_error_logs(out_dir, cell.run_id)
     store.write_config(resolved)
     manifest = RunManifest(
         run_id=cell.run_id,
@@ -123,11 +170,13 @@ def run_cell(
         intensity=cell.intensity,
         mode=cell.mode,
         repeat=cell.repeat,
+        meta=cell.scenario.meta,
         python=sys.version.split()[0],
         numpy=np.__version__,
         started=_now(),
     )
     calls: list[LLMCall] = []
+    error_kind = error_message = ""
     try:
         T = cfg.T
         model = build_model(cell.model)
@@ -193,11 +242,18 @@ def run_cell(
     except Exception as exc:  # one failing cell must not abort a sweep
         manifest.status = "failed"
         manifest.error = f"{type(exc).__name__}: {exc}"
+        # A ShockError wraps the real cause (ParseError, a provider error ...); name the log folder after the cause.
+        error_kind, error_message = type(exc.__cause__ or exc).__name__, str(exc)
     finally:
         manifest.n_llm_calls = len(calls)
+        key = next((s.llm.key for s in cell.scenario.shocks if s.source == "llm"), None)
+        answers = [c.parsed[key] for c in calls if c.parsed and key in c.parsed]
+        manifest.answer = answers[0] if answers else None
         manifest.finished = _now()
         store.write_llm_calls(calls)
         store.write_manifest(manifest)
+        if manifest.status == "failed":
+            write_error_log(out_dir, manifest, calls, error_kind or "Error", error_message)
     return manifest
 
 
@@ -207,7 +263,11 @@ def run_experiment(
     renderer: PromptRenderer | None = None,
     llm_factory: Callable[[LLMConfig], LLMClient] = build_llm,
     on_cell: Callable[[RunManifest], None] | None = None,
+    on_skip: Callable[[RunManifest], None] | None = None,
+    force: bool = False,
 ) -> list[RunManifest]:
+    """Run every cell. Cells already completed with an identical setup are kept as they are (not re-solved, files
+    untouched) and reported through `on_skip`; `force=True` runs everything again."""
     root = Path(out_root or cfg.out_dir or runs_dir())
     exp_dir = root / cfg.id
     renderer = renderer or PromptRenderer()
@@ -215,9 +275,16 @@ def run_experiment(
     baselines: dict = {}
     manifests: list[RunManifest] = []
     for cell in expand_cells(cfg):
+        kept = None if force else _reusable(exp_dir, cfg, cell, renderer)
+        if kept is not None:
+            manifests.append(kept)
+            if on_skip:
+                on_skip(kept)
+            continue
         manifest = run_cell(cfg, cell, exp_dir, renderer, llms, baselines, llm_factory)
         manifests.append(manifest)
         if on_cell:
             on_cell(manifest)
     write_index(exp_dir, manifests)
+    write_summary(exp_dir)
     return manifests
